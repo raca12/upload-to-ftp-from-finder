@@ -10,7 +10,7 @@ A tiny macOS menu bar app for people who upload screenshots and photos all day a
 ![Swift](https://img.shields.io/badge/Swift-5-orange?logo=swift)
 ![No Xcode required](https://img.shields.io/badge/build-no%20Xcode-blue)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
-![Version](https://img.shields.io/badge/version-0.1.1-lightgrey)
+![Version](https://img.shields.io/badge/version-0.2.0-lightgrey)
 
 [Download](#install) · [Features](#features) · [Screenshots](#screenshots) · [Build from source](#build-from-source) · [Support](SUPPORT.md) · [Privacy](PRIVACY.md) · [Changelog](CHANGELOG.md)
 
@@ -72,7 +72,7 @@ This app removes all of that. Select the files in Finder, right-click, pick your
 
 1. Download **`UploadToFTP-0.1.0.dmg`** from [Releases](../../releases/latest)
 2. Open it and drag **Upload to FTP from Finder** into *Applications*
-3. First launch: **right-click the app → Open** (the build is ad-hoc signed, not notarized yet)
+3. The app is **signed with a Developer ID and notarized by Apple** — it opens with a normal double-click
 
 On first launch the app offers to **enable the Finder extension** with one click
 (menu bar **▲** → *Set up Finder integration…* reopens this window).
@@ -98,8 +98,7 @@ brew install --cask raca12/tap/upload-to-ftp-from-finder
 Download **`UploadToFTP-0.1.0.zip`**, unzip, move the app to *Applications*, then run the same two commands above.
 The zip also contains the `mcb` command line tool.
 
-> **Gatekeeper note:** releases are ad-hoc signed (`codesign -`). macOS will warn on the first launch — right-click → *Open* once. If it still complains:
-> `xattr -dr com.apple.quarantine "/Applications/Upload to FTP from Finder.app"`
+> **Gatekeeper:** releases are notarized, so no warning on first launch. If you build from source, the local build is ad-hoc signed — right-click → *Open* once.
 
 ## Add your server
 
@@ -182,7 +181,8 @@ cd upload-to-ftp-from-finder
 
 ### Signing & notarization
 
-Builds are ad-hoc signed by default. With an Apple Developer account:
+Release builds are signed with a **Developer ID Application** certificate and notarized by Apple
+(`spctl: accepted, source=Notarized Developer ID`). To reproduce:
 
 ```sh
 xcrun notarytool store-credentials "mcb-notary" \
@@ -236,7 +236,7 @@ tools/
 - [x] Keychain for FTP credentials
 - [ ] S3, Cloudflare R2, WebDAV
 - [ ] Upload from clipboard (screenshots)
-- [ ] Notarized builds (script ready, needs an Apple Developer account)
+- [x] Developer ID signing + notarization
 - [ ] More languages (German, Spanish)
 
 ## Credits

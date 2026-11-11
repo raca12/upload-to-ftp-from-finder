@@ -3,11 +3,17 @@
 All notable changes to **Upload to FTP from Finder** are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.2.0] — 2026-11-11
 
 ### Added
 - First-run onboarding window that enables the Finder extension from inside the app (no terminal needed)
 - GitHub Actions CI: build + 65 self-tests + bundle/signature checks on every push
+- **Developer ID signing + Apple notarization** for release builds
+- `PRIVACY.md`, `SUPPORT.md`
+
+### Changed
+- The app no longer touches the Keychain when building menus or the server list;
+  passwords are read only when an upload or connection test needs them
 
 ## [0.1.1] — 2026-11-11
 
