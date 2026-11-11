@@ -1,0 +1,9 @@
+.build/
+bin/
+dist/
+.mock-upload/
+.mock-ftp/
+.ref/
+.DS_Store
+*.dylib
+*.xcuserstate
