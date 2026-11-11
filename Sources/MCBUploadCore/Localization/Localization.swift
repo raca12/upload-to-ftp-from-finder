@@ -227,7 +227,7 @@ public enum Localization {
         "HTTP yüklemelerinde klasörü sunucu belirler": "For HTTP uploads the server decides the folder",
         "FTPS (güvenli, explicit)": "FTPS (secure, explicit)",
         "FTPS (güvenli, implicit)": "FTPS (secure, implicit)",
-        "SFTP — yakında": "SFTP — coming soon",
+        "SFTP": "SFTP",
         "Sunucu {\"url\":\"https://…\"} gibi cevap veriyorsa bunu seç.": "Choose this if the server responds like {\"url\":\"https://…\"}.",
         "Sunucu {\"link\":\"https://…\"} gibi cevap veriyorsa bunu seç.": "Choose this if the server responds like {\"link\":\"https://…\"}.",
         "Sunucu sadece linki yazıp döndürüyorsa bunu seç.": "Choose this if the server returns just the link.",
@@ -248,7 +248,7 @@ public enum Localization {
         "Aktarım başarısız (çıkış kodu %d): %@": "Transfer failed (exit code %d): %@",
         "Dosya yüklendi ama yanıttan URL çıkarılamadı. Yanıt: %@": "File uploaded but no URL could be extracted from the response. Response: %@",
         "Dosya bulunamadı: %@": "File not found: %@",
-        "Bağlantı tamam · %@ içinde %d öğe görünüyor": "Connected · %d entries in %@",
+        "Bağlantı tamam · %@ içinde %d öğe görünüyor": "Connected · %@ has %d entries",
         "Sunucuya ulaşıldı · %@": "Server reached · %@",
         "Sunucuya ulaşıldı · %@ (HEAD desteklenmiyor olabilir, yükleme çalışabilir)": "Server reached · %@ (HEAD may be unsupported, upload may still work)",
     ]

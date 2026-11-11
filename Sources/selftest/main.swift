@@ -141,6 +141,29 @@ try secStore.removePassword()
 expect(!secStore.load().hasPassword, "parola kaldırıldı")
 try? FileManager.default.removeItem(at: secBase)
 
+// MARK: Keychain
+let credStore = CredentialStore(service: "com.mcb.upload.selftest")
+let credAccount = UUID().uuidString
+expect(credStore.setPassword("gizli-parola", for: credAccount), "keychain yazma")
+expectEqual(credStore.password(for: credAccount) ?? "", "gizli-parola", "keychain okuma")
+credStore.setPassword("yeni-parola", for: credAccount)
+expectEqual(credStore.password(for: credAccount) ?? "", "yeni-parola", "keychain güncelleme")
+credStore.deletePassword(for: credAccount)
+expect(credStore.password(for: credAccount) == nil, "keychain silme")
+
+// Profil deposu parolayı JSON'a yazmamalı
+let secBase2 = FileManager.default.temporaryDirectory.appendingPathComponent("rightload-kc-\(UUID().uuidString)")
+let kcStore = ProfileStore(baseDirectory: secBase2, credentials: credStore)
+var kcServer = ServerProfile(name: "KC", proto: .ftp, host: "h", username: "u", password: "sifre123")
+try kcStore.save([kcServer])
+let rawJSON = try String(contentsOf: secBase2.appendingPathComponent("servers.json"), encoding: .utf8)
+expect(!rawJSON.contains("sifre123"), "parola JSON'da düz metin değil")
+expectEqual((try kcStore.load()).first?.password ?? "", "sifre123", "parola Keychain'den çözüldü")
+kcServer.password = ""
+try kcStore.save([kcServer])
+expect(credStore.password(for: kcServer.id.uuidString) == nil, "boş parola keychain'den silindi")
+try? FileManager.default.removeItem(at: secBase2)
+
 // MARK: Yerelleştirme
 Localization.preferred = .english
 expectEqual(Localization.text("Yükle"), "Upload", "İngilizce çeviri")

@@ -3,6 +3,8 @@ bin/
 dist/
 .mock-upload/
 .mock-ftp/
+.mock-sftp/
+.mock-sftp-key
 .ref/
 .DS_Store
 *.dylib

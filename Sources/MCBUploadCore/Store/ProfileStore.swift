@@ -50,10 +50,12 @@ public enum MCBUploadPaths {
 
 public final class ProfileStore {
     public let baseDirectory: URL
+    public let credentials: CredentialStore
 
     public var fileURL: URL { baseDirectory.appendingPathComponent("servers.json") }
 
-    public init(baseDirectory: URL? = nil) {
+    public init(baseDirectory: URL? = nil, credentials: CredentialStore = CredentialStore()) {
+        self.credentials = credentials
         if let baseDirectory {
             self.baseDirectory = baseDirectory
         } else if let custom = ProcessInfo.processInfo.environment["MCB_HOME"], !custom.isEmpty {
@@ -65,14 +67,51 @@ public final class ProfileStore {
 
     // MARK: - Okuma / yazma
 
-    public func load() throws -> [ServerProfile] {
+    /// Sunucuları okur. `resolvePasswords` false ise Keychain'e hiç dokunulmaz
+    /// (Finder eklentisi yalnızca isimleri okur).
+    public func load(resolvePasswords: Bool = true) throws -> [ServerProfile] {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return [] }
         let data = try Data(contentsOf: fileURL)
-        let document = try JSONDecoder.mcb.decode(ServerDocument.self, from: data)
-        return document.servers
+        var servers = try JSONDecoder.mcb.decode(ServerDocument.self, from: data).servers
+        guard resolvePasswords else { return servers }
+
+        // Eski sürümden kalan düz metin parolaları Keychain'e taşı
+        var migrated = false
+        for index in servers.indices where !servers[index].password.isEmpty {
+            // Yalnızca Keychain'e yazılabildiyse JSON'dan sil (aksi halde parola kaybolur)
+            if credentials.setPassword(servers[index].password, for: servers[index].id.uuidString) {
+                servers[index].password = ""
+                migrated = true
+            }
+        }
+        if migrated { try? writeDocument(servers) }
+
+        for index in servers.indices {
+            if let password = credentials.password(for: servers[index].id.uuidString) {
+                servers[index].password = password
+            }
+        }
+        return servers
     }
 
+    /// Parolalar Keychain'e, geri kalan her şey JSON'a yazılır.
     public func save(_ servers: [ServerProfile]) throws {
+        var stored = servers
+        for index in stored.indices {
+            let account = stored[index].id.uuidString
+            if stored[index].password.isEmpty {
+                credentials.deletePassword(for: account)
+            } else if !credentials.setPassword(stored[index].password, for: account) {
+                // Keychain'e yazılamadıysa parolayı JSON'da tut (veri kaybı olmasın)
+                continue
+            } else {
+                stored[index].password = ""
+            }
+        }
+        try writeDocument(stored)
+    }
+
+    private func writeDocument(_ servers: [ServerProfile]) throws {
         try FileManager.default.createDirectory(at: baseDirectory, withIntermediateDirectories: true)
         let document = ServerDocument(version: 1, servers: servers)
         let data = try JSONEncoder.mcb.encode(document)

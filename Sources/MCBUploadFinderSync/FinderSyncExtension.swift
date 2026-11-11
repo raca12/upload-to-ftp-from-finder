@@ -22,7 +22,7 @@ final class FinderSyncExtension: FIFinderSync {
                                                                   includingPropertiesForKeys: nil)) ?? []
         FIFinderSyncController.default().directoryURLs = Set(monitored)
 
-        let count = (try? store.load())?.count ?? -1
+        let count = (try? store.load(resolvePasswords: false))?.count ?? -1
         log.log("başladı — okunan sunucu: \(count, privacy: .public)")
     }
 
@@ -41,7 +41,7 @@ final class FinderSyncExtension: FIFinderSync {
         let menu = NSMenu(title: "")
         menu.autoenablesItems = false   // Finder doğrulaması öğeleri devre dışı bırakmasın
 
-        let servers = (try? store.load()) ?? []
+        let servers = (try? store.load(resolvePasswords: false)) ?? []
         serverMap = [:]
         for (index, server) in servers.enumerated() {
             serverMap[index + 1] = server
@@ -149,7 +149,7 @@ final class FinderSyncExtension: FIFinderSync {
         if let server = serverMap[sender.tag] { return server }
         // Yedek: menu kopyalanırken tag kaybolduysa ada göre bul
         let title = sender.title.components(separatedBy: "  (").first ?? sender.title
-        return (try? store.load())?.first(where: { $0.name == title })
+        return (try? store.load(resolvePasswords: false))?.first(where: { $0.name == title })
     }
 
     @objc private func uploadToDefaultFolder(_ sender: NSMenuItem) {

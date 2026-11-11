@@ -35,7 +35,8 @@ public struct ConnectionTester {
             return Localization.text("Bağlantı tamam · %@ içinde %d öğe görünüyor", profile.remotePath, entries.count)
 
         case .sftp:
-            throw MCBUploadError.unsupportedProtocol("SFTP (Faz 2)")
+            let count = try SFTPRunner().check(profile: profile, path: profile.remotePath)
+            return Localization.text("Bağlantı tamam · %@ içinde %d öğe görünüyor", profile.remotePath, count)
 
         case .http:
             guard let cfg = profile.http else { throw MCBUploadError.httpConfigMissing }

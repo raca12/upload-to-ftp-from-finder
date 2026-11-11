@@ -161,7 +161,7 @@ final class ServerEditorController: NSWindowController {
                                             Localization.text("FTPS (güvenli, explicit)"),
                                             Localization.text("FTPS (güvenli, implicit)"),
                                             "HTTP POST",
-                                            Localization.text("SFTP — yakında")])
+                                            "SFTP"])
         protocolPopup.toolTip = Localization.text("Sunucu türü. Hosting panelinde “FTP” ya da “FTPS” yazar.")
         protocolPopup.target = self
         protocolPopup.action = #selector(protocolChanged)
@@ -366,11 +366,7 @@ final class ServerEditorController: NSWindowController {
             portField.stringValue = "\(proto.defaultPort)"
         }
         updateHTTPVisibility()
-        if proto == .sftp {
-            setStatus(t("SFTP Faz 2'de gelecek — şimdilik FTP/FTPS kullan."), color: .systemOrange)
-        } else {
-            setStatus("")
-        }
+        setStatus("")
     }
 
     @objc private func presetChanged() {
@@ -479,7 +475,7 @@ final class ServerEditorController: NSWindowController {
         let proto = selectedProto
 
         if name.isEmpty { return fail(t("Sunucuya bir ad ver (örn. “Blog”).")) }
-        if proto == .sftp { return fail(t("SFTP henüz desteklenmiyor.")) }
+
         if host.isEmpty { return fail(t("Sunucu adresi boş olamaz.")) }
         guard let port = Int(portField.stringValue.trimmingCharacters(in: .whitespaces)), (1...65535).contains(port) else {
             return fail(t("Port 1–65535 arasında bir sayı olmalı."))

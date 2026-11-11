@@ -165,7 +165,10 @@ public struct UploadEngine {
             return ("", result.stdout)
 
         case .sftp:
-            throw MCBUploadError.unsupportedProtocol("SFTP (macOS'ta sistem curl'ü SSH desteklemiyor — Faz 2'de libssh2/swift-nio-ssh ile gelecek)")
+            let result = try SFTPRunner().upload(file: file, profile: profile, remotePath: remotePath)
+            try ensureSuccess(result)
+            progress(1)
+            return ("", result.stdout)
 
         case .http:
             guard let cfg = profile.http else { throw MCBUploadError.httpConfigMissing }

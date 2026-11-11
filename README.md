@@ -46,8 +46,8 @@ This app removes all of that. Select the files in Finder, right-click, pick your
 
 **Protocols**
 - FTP, FTPS (explicit + implicit)
+- **SFTP** — password or SSH key auth, host key remembered on first connect
 - HTTP POST (multipart form) for custom endpoints — links are extracted from the server response with a preset or a custom regex
-- SFTP: planned (macOS' built-in curl has no SSH support)
 
 **Files**
 - Batch upload queue with per-file progress, cancel, retry
@@ -60,8 +60,9 @@ This app removes all of that. Select the files in Finder, right-click, pick your
 - Everything copied to the clipboard automatically
 
 **Privacy & control**
-- Optional password lock: never / on launch / on every upload / on every action
-- Passwords hashed with PBKDF2-HMAC-SHA256 (120k rounds, random salt)
+- **FTP passwords live in the macOS Keychain**, never in the JSON settings file
+- Optional app password lock: never / on launch / on every upload / on every action
+- App password is hashed with PBKDF2-HMAC-SHA256 (120k rounds, random salt)
 - English + Turkish UI (system language or manual, more languages are one dictionary away)
 - No analytics, no telemetry, no account
 
@@ -82,6 +83,14 @@ killall Finder
 ```
 
 If the menu still doesn't appear: **System Settings › General › Login Items & Extensions › Added Extensions** → enable **Upload to FTP from Finder**.
+
+### Homebrew
+
+```sh
+brew install --cask raca12/tap/upload-to-ftp-from-finder
+```
+
+(or from a local checkout: `brew install --cask ./Casks/upload-to-ftp-from-finder.rb`)
 
 ### ZIP
 
@@ -139,7 +148,11 @@ Menu bar **▲** → **Security & Language…**
 
 The lock screen appears before anything sensitive happens; wrong password does nothing. `⌘L` locks the session manually.
 
-> **Security honesty:** the *app* password is properly hashed (PBKDF2), but the **FTP passwords are still stored in plain text** in `~/Library/Application Support/MCBUpload/servers.json` (permissions `0600`). Moving them to the macOS Keychain is the next security milestone.
+> **Security details:** FTP/SFTP passwords are stored in the **macOS Keychain** (generic password items, service `com.mcb.upload.ftp`, account = server UUID). Older plain-text passwords are migrated automatically on first launch. The app password is never stored — only a PBKDF2-HMAC-SHA256 hash (120k rounds, random salt) in `security.json` (mode `0600`).
+>
+> SFTP host keys are checked with `StrictHostKeyChecking=accept-new`: the first connection pins the key in `~/.ssh/known_hosts`, later changes are rejected.
+>
+> Passwords are passed to `sftp`/`curl` through environment/askpass files, never on the command line, so they don't show up in `ps`.
 
 ## Command line
 
@@ -165,6 +178,20 @@ cd upload-to-ftp-from-finder
 .build/manual/selftest        # 58 checks
 ./tools/install-extension.sh  # install to /Applications and enable the extension
 ```
+
+### Signing & notarization
+
+Builds are ad-hoc signed by default. With an Apple Developer account:
+
+```sh
+xcrun notarytool store-credentials "mcb-notary" \
+  --apple-id "you@example.com" --team-id "TEAMID" --password "app-specific-password"
+
+DEVELOPER_ID="Developer ID Application: Name (TEAMID)" \
+NOTARY_PROFILE="mcb-notary" ./tools/notarize.sh 0.1.1
+```
+
+`tools/notarize.sh` signs inside-out with hardened runtime, submits to Apple, staples the ticket and rebuilds the DMG/ZIP.
 
 `tools/build-release.sh` produces `dist/` with:
 
@@ -204,11 +231,11 @@ tools/
 
 ## Roadmap
 
-- [ ] SFTP (libssh2 / swift-nio-ssh)
+- [x] SFTP (OpenSSH `sftp`, password + key auth)
+- [x] Keychain for FTP credentials
 - [ ] S3, Cloudflare R2, WebDAV
-- [ ] Keychain for FTP credentials
 - [ ] Upload from clipboard (screenshots)
-- [ ] Developer ID signing + notarization (needs an Apple Developer account)
+- [ ] Notarized builds (script ready, needs an Apple Developer account)
 - [ ] More languages (German, Spanish)
 
 ## Credits
@@ -216,7 +243,22 @@ tools/
 Feature set inspired by [Rightload](https://rightload.org/), a Windows uploader from 2010 that is no longer available for macOS.
 This project is an independent clean-room implementation — no code or affiliation.
 
-Turkish UI included: *Ayarlar → Dil → Türkçe*.
+Turkish UI included: *Security & Language → Language → Türkçe*.
+
+---
+
+## Türkçe
+
+Finder'da dosyaya sağ tıkla → **Finder'dan FTP'ye Yükle** → sunucu → **Buraya yükle**.
+Yükleme bitince BB-Code/HTML/Markdown linkleri panona kopyalanır.
+
+- Menü çubuğundaki **▲** → *Uygulamayı Aç* ana pencereyi açar (sürükle-bırak, kuyruk, canlı ilerleme).
+- **＋** ile sunucu ekle: FTP / FTPS / SFTP / HTTP POST. *Bağlantıyı Test Et* ile doğrula.
+- **Klasör** satırındaki **Gözat…** ile yüklemeden önce sunucudaki hedef klasörü seç.
+- *Güvenlik ve Dil…* → parola kilidi (hiç / açılışta / her yüklemede / her işlemde) ve dil.
+- FTP/SFTP şifreleri macOS **Keychain**'de tutulur.
+- İlk açılışta macOS "doğrulanamadı" uyarısı verirse: uygulamaya sağ tık → **Aç**.
+- Finder menüsü görünmüyorsa: `pluginkit -e use -i com.mcb.upload.FinderSync && killall Finder`
 
 ## License
 

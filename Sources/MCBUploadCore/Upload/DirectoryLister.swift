@@ -93,7 +93,7 @@ public struct DirectoryLister {
         case .ftp, .ftps, .ftpsi:
             break
         case .sftp:
-            throw MCBUploadError.unsupportedProtocol("SFTP (Faz 2)")
+            return try SFTPRunner().list(profile: profile, path: path)
         case .http:
             throw MCBUploadError.unsupportedProtocol("HTTP yüklemelerinde klasörü sunucu belirler")
         }
