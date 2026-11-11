@@ -158,7 +158,7 @@ mcb import-filezilla                  # import sites from FileZilla
 No Xcode required — only the Command Line Tools (Swift 5.9+).
 
 ```sh
-git clone https://github.com/<user>/upload-to-ftp-from-finder.git
+git clone https://github.com/raca12/upload-to-ftp-from-finder.git
 cd upload-to-ftp-from-finder
 ./build.sh                    # core + CLI + app + Finder extension
 ./build.sh --with-selftest
