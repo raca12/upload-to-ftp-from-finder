@@ -10,7 +10,7 @@ A tiny macOS menu bar app for people who upload screenshots and photos all day a
 ![Swift](https://img.shields.io/badge/Swift-5-orange?logo=swift)
 ![No Xcode required](https://img.shields.io/badge/build-no%20Xcode-blue)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
-![Version](https://img.shields.io/badge/version-0.1.0-lightgrey)
+![Version](https://img.shields.io/badge/version-0.1.1-lightgrey)
 
 [Download](#install) · [Features](#features) · [Screenshots](#screenshots) · [Build from source](#build-from-source)
 
