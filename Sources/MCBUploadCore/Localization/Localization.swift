@@ -72,6 +72,7 @@ public enum Localization {
         "Sunucu Ekle… (FTP)": "Add Server… (FTP)",
         "Seçili Sunucuyu Düzenle…": "Edit Selected Server…",
         "Hızlı Yükle": "Quick Upload",
+        "Hızlı yükle → %@": "Quick upload → %@",
         "Ayar Dosyasını Aç": "Open Settings File",
         "Güvenlik ve Dil…": "Security & Language…",
         "Kilitle": "Lock",

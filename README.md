@@ -24,7 +24,17 @@ Uploading "just three pictures" usually means: open a heavy FTP app, type the ho
 
 This app removes all of that. Select the files in Finder, right-click, pick your server — the upload starts and the **BB-Code / HTML / Markdown links land in your clipboard**.
 
-![Main window](docs/screenshots/01-main.png)
+![Finder right-click menu](docs/screenshots/05-finder-menu.png)
+
+## Screenshots
+
+| Main window | Add a server |
+|---|---|
+| ![Main window](docs/screenshots/01-main.png) | ![Server editor](docs/screenshots/02-server.png) |
+
+| Choose a folder on the server | Password lock |
+|---|---|
+| ![Folder picker](docs/screenshots/03-folder-picker.png) | ![Lock screen](docs/screenshots/04-lock.png) |
 
 ## Features
 
@@ -54,16 +64,6 @@ This app removes all of that. Select the files in Finder, right-click, pick your
 - Passwords hashed with PBKDF2-HMAC-SHA256 (120k rounds, random salt)
 - English + Turkish UI (system language or manual, more languages are one dictionary away)
 - No analytics, no telemetry, no account
-
-## Screenshots
-
-| Add a server | Choose a folder on the server |
-|---|---|
-| ![Server editor](docs/screenshots/02-server.png) | ![Folder picker](docs/screenshots/03-folder-picker.png) |
-
-| Password lock |
-|---|
-| ![Lock screen](docs/screenshots/04-lock.png) |
 
 ## Install
 

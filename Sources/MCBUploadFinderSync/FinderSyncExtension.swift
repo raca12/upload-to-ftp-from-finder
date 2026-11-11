@@ -96,7 +96,7 @@ final class FinderSyncExtension: FIFinderSync {
 
         // Alt menüye girmeden tek tıkla çalışan kısayol (ilk sunucu)
         if let first = servers.first {
-            let quick = NSMenuItem(title: "Hızlı yükle → \(first.name)",
+            let quick = NSMenuItem(title: Localization.text("Hızlı yükle → %@", first.name),
                                    action: #selector(uploadToDefaultFolder(_:)),
                                    keyEquivalent: "")
             quick.target = self
