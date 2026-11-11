@@ -35,7 +35,10 @@ if [ -z "$DEVELOPER_ID" ]; then
 fi
 
 echo "→ İmzalanıyor: $DEVELOPER_ID"
-if [ ! -d "$APP" ]; then ./build.sh; fi
+if [ "${NO_BUILD:-0}" != "1" ]; then
+  echo "→ Yeniden derleniyor (sürüm bilgisi güncel olsun)"
+  ./build.sh
+fi
 
 # İçten dışa imzalama (hardened runtime + zaman damgası)
 codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID" \
