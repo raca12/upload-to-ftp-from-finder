@@ -12,7 +12,7 @@ A tiny macOS menu bar app for people who upload screenshots and photos all day a
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 ![Version](https://img.shields.io/badge/version-0.1.1-lightgrey)
 
-[Download](#install) · [Features](#features) · [Screenshots](#screenshots) · [Build from source](#build-from-source)
+[Download](#install) · [Features](#features) · [Screenshots](#screenshots) · [Build from source](#build-from-source) · [Support](SUPPORT.md) · [Privacy](PRIVACY.md) · [Changelog](CHANGELOG.md)
 
 </div>
 
@@ -74,15 +74,16 @@ This app removes all of that. Select the files in Finder, right-click, pick your
 2. Open it and drag **Upload to FTP from Finder** into *Applications*
 3. First launch: **right-click the app → Open** (the build is ad-hoc signed, not notarized yet)
 
-Then enable the Finder extension:
+On first launch the app offers to **enable the Finder extension** with one click
+(menu bar **▲** → *Set up Finder integration…* reopens this window).
+
+If the menu still doesn't appear, enable it manually:
 
 ```sh
-# one-time, enables the right-click menu
-pluginkit -e use -i com.mcb.upload.FinderSync
-killall Finder
+pluginkit -e use -i com.mcb.upload.FinderSync && killall Finder
 ```
 
-If the menu still doesn't appear: **System Settings › General › Login Items & Extensions › Added Extensions** → enable **Upload to FTP from Finder**.
+or **System Settings › General › Login Items & Extensions › Added Extensions** → **Upload to FTP from Finder**.
 
 ### Homebrew
 

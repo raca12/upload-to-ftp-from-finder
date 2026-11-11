@@ -249,7 +249,7 @@ final class MainWindowController: NSWindowController, NSTableViewDataSource, NST
     // MARK: - Veri
 
     func reloadProfiles(selectID: UUID? = nil) {
-        profiles = (try? store.load()) ?? []
+        profiles = (try? store.load(resolvePasswords: false)) ?? []
         serverPopup.removeAllItems()
         if profiles.isEmpty {
             serverPopup.addItem(withTitle: t("Sunucu yok — “＋” ile FTP ekle"))
@@ -418,6 +418,9 @@ final class MainWindowController: NSWindowController, NSTableViewDataSource, NST
     func startUpload(to profile: ServerProfile) {
         guard AppLock.shared.require(.upload) else { return }
         guard !isUploading else { return }
+        // Parola yalnızca yükleme anında Keychain'den okunur
+        var profile = profile
+        profile.password = store.password(for: profile)
         guard !items.isEmpty else {
             statusLabel.stringValue = t("Önce dosya ekle.")
             return

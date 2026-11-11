@@ -1,0 +1,48 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: swift --version
+
+      - name: Build (app + CLI + Finder extension)
+        run: ./build.sh --with-selftest
+
+      - name: Run self-tests
+        run: .build/manual/selftest
+
+      - name: Verify bundle layout
+        run: |
+          APP="bin/Upload to FTP from Finder.app"
+          test -x "$APP/Contents/MacOS/UploadToFTP"
+          test -x "$APP/Contents/PlugIns/UploadToFTPFinder.appex/Contents/MacOS/UploadToFTPFinder"
+          test -f "$APP/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :NSExtension:NSExtensionPointIdentifier" \
+            "$APP/Contents/PlugIns/UploadToFTPFinder.appex/Contents/Info.plist"
+
+      - name: Ad-hoc signature check
+        run: codesign --verify --deep --strict "bin/Upload to FTP from Finder.app"
+
+  package:
+    needs: build-and-test
+    runs-on: macos-14
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./build.sh
+      - run: ./tools/build-release.sh 0.0.0-ci
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-packages
+          path: dist/

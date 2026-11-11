@@ -119,6 +119,12 @@ public final class ProfileStore {
         try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
     }
 
+    /// Tek bir sunucunun parolasını Keychain'den okur (parola zaten doluysa dokunmaz).
+    public func password(for server: ServerProfile) -> String {
+        if !server.password.isEmpty { return server.password }
+        return credentials.password(for: server.id.uuidString) ?? ""
+    }
+
     public func upsert(_ server: ServerProfile) throws {
         var servers = try load()
         if let index = servers.firstIndex(where: { $0.id == server.id || $0.name == server.name }) {

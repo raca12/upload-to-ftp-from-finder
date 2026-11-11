@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let store = ProfileStore()
     private let security = SecurityStore()
     private var settingsController: SettingsWindowController?
+    private var onboardingController: OnboardingWindowController?
     private let inbox = RequestInbox()
     private var inboxObserver: NSObjectProtocol?
     private var inboxTimer: Timer?
@@ -45,6 +46,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("--show-window") {
             showWindow()
         }
+        // İlk açılış: Finder eklentisi etkin değilse kurulum penceresini göster
+        if !UserDefaults.standard.bool(forKey: OnboardingWindowController.didOnboardKey),
+           CommandLine.arguments.contains("--show-window") || CommandLine.arguments.contains("--onboarding") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                self?.openOnboarding()
+            }
+        }
+
+        if CommandLine.arguments.contains("--onboarding") {
+            openOnboarding()
+        }
+
         if CommandLine.arguments.contains("--settings") {
             openSettings()
         }
@@ -74,7 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: t("Seçili Sunucuyu Düzenle…"), action: #selector(editServer), keyEquivalent: "e").target = self
         menu.addItem(.separator())
 
-        let servers = (try? store.load()) ?? []
+        let servers = (try? store.load(resolvePasswords: false)) ?? []
         if servers.isEmpty {
             let empty = NSMenuItem(title: t("Sunucu tanımlı değil"), action: nil, keyEquivalent: "")
             empty.isEnabled = false
@@ -94,6 +107,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(parent)
         }
 
+        menu.addItem(withTitle: t("Finder entegrasyonunu ayarla…"), action: #selector(openOnboarding), keyEquivalent: "").target = self
         menu.addItem(withTitle: t("Güvenlik ve Dil…"), action: #selector(openSettings), keyEquivalent: ",").target = self
         if security.load().hasPassword {
             menu.addItem(withTitle: t("Kilitle"), action: #selector(lockNow), keyEquivalent: "l").target = self
@@ -148,10 +162,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func uploadToServer(_ sender: NSMenuItem) {
         guard let idString = sender.representedObject as? String,
               let uuid = UUID(uuidString: idString),
-              let server = (try? store.load())?.first(where: { $0.id == uuid }) else { return }
+              let server = (try? store.load(resolvePasswords: false))?.first(where: { $0.id == uuid }) else { return }
         showWindow()
         windowController?.selectServer(server)
         windowController?.addFilesViaPanel()
+    }
+
+    @objc private func openOnboarding() {
+        if onboardingController == nil { onboardingController = OnboardingWindowController() }
+        onboardingController?.window?.center()
+        onboardingController?.showWindow(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc private func openSettings() {

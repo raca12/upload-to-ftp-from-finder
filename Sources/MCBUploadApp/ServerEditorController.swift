@@ -59,6 +59,7 @@ final class ServerEditorController: NSWindowController {
 
     private var original: ServerProfile?
     private let tester = ConnectionTester()
+    private let profileStore = ProfileStore()
 
     private let nameField = NSTextField()
     private let protocolPopup = NSPopUpButton()
@@ -408,7 +409,8 @@ final class ServerEditorController: NSWindowController {
     // MARK: - Eylemler
 
     @objc private func testTapped() {
-        guard let profile = buildProfile(showErrors: true) else { return }
+        guard var profile = buildProfile(showErrors: true) else { return }
+        if profile.password.isEmpty { profile.password = profileStore.password(for: profile) }
         testButton.isEnabled = false
         setStatus(t("Test ediliyor…"))
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
