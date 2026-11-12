@@ -167,6 +167,12 @@ public struct ServerDocument: Codable {
         self.version = version
         self.servers = servers
     }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.version = try container.decodeIfPresent(Int.self, forKey: .version) ?? 1
+        self.servers = try container.decodeIfPresent([ServerProfile].self, forKey: .servers) ?? []
+    }
 }
 
 // MARK: - JSON kodlayıcılar

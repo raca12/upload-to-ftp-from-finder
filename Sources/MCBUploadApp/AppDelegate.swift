@@ -18,6 +18,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var inboxTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Tek örnek: ikinci kopya açılmasın (test için MCB_ALLOW_MULTIPLE=1)
+        if ProcessInfo.processInfo.environment["MCB_ALLOW_MULTIPLE"] == nil {
+            let others = NSRunningApplication.runningApplications(withBundleIdentifier: "com.mcb.upload")
+                .filter { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }
+            if let existing = others.first {
+                existing.activate(options: [.activateAllWindows])
+                exit(0)
+            }
+        }
+
         installMainMenu()
         buildStatusItem()
         NotificationCenter.default.addObserver(forName: .mcbServersChanged, object: nil, queue: .main) { [weak self] _ in
@@ -255,6 +265,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func quit() {
         NSApp.terminate(nil)
+        // Terminate engellenirse (modal pencere vb.) 1 sn sonra zorla çık
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { exit(0) }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

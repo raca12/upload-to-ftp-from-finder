@@ -23,7 +23,14 @@ public enum MCBUploadError: LocalizedError {
             return Localization.text("Eksik bilgi: %@", what)
         case .transportFailed(let code, let message):
             let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
-            let detail = trimmed.isEmpty ? "?" : trimmed
+            var detail = trimmed.isEmpty ? "?" : trimmed
+            if code == 28 {
+                detail += " — " + Localization.text("Zaman aşımı: sunucu veri bağlantısına yanıt vermedi (pasif mod/firewall veya yanlış port olabilir).")
+            } else if code == 7 {
+                detail += " — " + Localization.text("Sunucuya bağlanılamadı (host/port veya firewall).")
+            } else if code == 67 {
+                detail += " — " + Localization.text("Kullanıcı adı veya şifre hatalı, ya da FTP girişine izin verilmiyor.")
+            }
             return Localization.text("Aktarım başarısız (çıkış kodu %d): %@", code, detail)
         case .urlNotDetected(let response):
             let preview = response.trimmingCharacters(in: .whitespacesAndNewlines)

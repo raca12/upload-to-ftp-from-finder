@@ -3,6 +3,14 @@
 All notable changes to **Upload to FTP from Finder** are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.2.4] — 2026-11-12
+
+### Fixed
+- FTP "Test Connection" / uploads could fail with **exit code 28 (timeout)** on servers behind NAT
+  or restrictive firewalls. curl now ignores the PASV host, retries once with EPSV disabled, and the
+  timeout was raised to 45s.
+- Error messages now explain common curl codes (28 timeout, 7 connect, 67 login).
+
 ## [0.2.3] — 2026-11-12
 
 ### Added

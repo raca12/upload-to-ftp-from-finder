@@ -18,14 +18,23 @@ public struct ConnectionTester {
             if !directoryPath.hasSuffix("/") { directoryPath += "/" }
             let url = PathTools.transferURL(profile: profile, remoteFilePath: directoryPath)
 
-            var args = ["--silent", "--show-error", "--list-only", "--max-time", "25", url]
-            if profile.proto == .ftps { args.append("--ssl-reqd") }
-
             let credentials = profile.username.isEmpty
                 ? ""
                 : CurlTransport.configLine(key: "user", value: "\(profile.username):\(profile.password)")
 
-            let result = try transport.run(arguments: args, secretConfig: credentials, onProgress: nil)
+            // Bazı sunucular PASV yanıtında iç IP döndürür; ilk denemede bunu yok say.
+            // Zaman aşımında EPSV'yi kapatıp yeniden dene (firewall/NAT uyumluluğu).
+            func attempt(extra: [String]) throws -> TransportResult {
+                var args = ["--silent", "--show-error", "--list-only", "--max-time", "45",
+                            "--ftp-skip-pasv-ip", url] + extra
+                if profile.proto == .ftps { args.append("--ssl-reqd") }
+                return try transport.run(arguments: args, secretConfig: credentials, onProgress: nil)
+            }
+
+            var result = try attempt(extra: [])
+            if result.exitCode != 0 {
+                result = try attempt(extra: ["--disable-epsv"])
+            }
             guard result.exitCode == 0 else {
                 throw MCBUploadError.transportFailed(exitCode: result.exitCode, message: result.stderr)
             }

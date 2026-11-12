@@ -156,11 +156,20 @@ public struct UploadEngine {
         switch profile.proto {
         case .ftp, .ftps, .ftpsi:
             let url = PathTools.transferURL(profile: profile, remoteFilePath: remotePath)
-            var args = baseArgs()
-            if profile.proto == .ftps { args.append("--ssl-reqd") }
-            args.append(contentsOf: ["--ftp-create-dirs", "-T", file.path, url])
             let secret = curlCredentials(profile)
-            let result = try transport.run(arguments: args, secretConfig: secret, onProgress: progress)
+
+            func attempt(extra: [String]) throws -> TransportResult {
+                var args = baseArgs() + extra
+                if profile.proto == .ftps { args.append("--ssl-reqd") }
+                args.append(contentsOf: ["--ftp-skip-pasv-ip", "--ftp-create-dirs", "-T", file.path, url])
+                return try transport.run(arguments: args, secretConfig: secret, onProgress: progress)
+            }
+
+            var result = try attempt(extra: [])
+            // 28 = zaman aşımı: EPSV'yi kapatıp bir kez daha dene (firewall/NAT uyumu)
+            if result.exitCode == 28 || result.exitCode == 56 {
+                result = try attempt(extra: ["--disable-epsv"])
+            }
             try ensureSuccess(result)
             return ("", result.stdout)
 
