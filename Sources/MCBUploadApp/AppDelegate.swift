@@ -18,6 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var inboxTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        installMainMenu()
         buildStatusItem()
         NotificationCenter.default.addObserver(forName: .mcbServersChanged, object: nil, queue: .main) { [weak self] _ in
             self?.refreshMenu()
@@ -65,6 +66,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             showWindow()
             windowController?.presentServerEditor(nil)
         }
+    }
+
+    // MARK: - Düzenleme menüsü (⌘C/⌘V/⌘A kısayolları için gerekli)
+
+    private func installMainMenu() {
+        let mainMenu = NSMenu()
+
+        let appMenuItem = NSMenuItem()
+        mainMenu.addItem(appMenuItem)
+
+        let editMenuItem = NSMenuItem()
+        mainMenu.addItem(editMenuItem)
+        let editMenu = NSMenu(title: t("Düzenle"))
+        editMenuItem.submenu = editMenu
+
+        func add(_ title: String, _ action: Selector, _ key: String, _ modifiers: NSEvent.ModifierFlags = .command) {
+            let item = NSMenuItem(title: t(title), action: action, keyEquivalent: key)
+            item.keyEquivalentModifierMask = modifiers
+            editMenu.addItem(item)
+        }
+
+        add("Geri Al", Selector(("undo:")), "z")
+        add("Yinele", Selector(("redo:")), "Z", [.command, .shift])
+        editMenu.addItem(.separator())
+        add("Kes", #selector(NSText.cut(_:)), "x")
+        add("Kopyala", #selector(NSText.copy(_:)), "c")
+        add("Yapıştır", #selector(NSText.paste(_:)), "v")
+        add("Sil", #selector(NSText.delete(_:)), "")
+        add("Tümünü Seç", #selector(NSText.selectAll(_:)), "a")
+
+        NSApp.mainMenu = mainMenu
     }
 
     // MARK: - Menu bar

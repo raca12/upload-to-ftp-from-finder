@@ -3,6 +3,12 @@
 All notable changes to **Upload to FTP from Finder** are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.2.1] — 2026-11-12
+
+### Fixed
+- **⌘V / ⌘C / ⌘A did not work** in the server editor and other text fields:
+  the menu-bar-only app had no Edit menu, so standard editing shortcuts were never dispatched
+
 ## [0.2.0] — 2026-11-11
 
 ### Added
