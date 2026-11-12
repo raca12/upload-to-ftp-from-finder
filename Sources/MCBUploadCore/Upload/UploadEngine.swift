@@ -145,6 +145,53 @@ public struct UploadEngine {
         return ext.isEmpty ? "\(stem)-\(UUID().uuidString.prefix(4))" : "\(stem)-\(UUID().uuidString.prefix(4)).\(ext)"
     }
 
+    /// Hedef klasörün son parçası ile alt klasörün ilk parçası aynıysa mükerrer klasör oluşmasını önler.
+    public static func resolveRemoteDir(rootRemoteDir: String, subfolder: String?) -> String {
+        guard let sub = subfolder?.trimmingCharacters(in: .whitespacesAndNewlines), !sub.isEmpty else {
+            return rootRemoteDir
+        }
+        let rootParts = rootRemoteDir.split(separator: "/").map(String.init)
+        var subParts = sub.split(separator: "/").map(String.init)
+        if let lastRoot = rootParts.last, let firstSub = subParts.first,
+           lastRoot.caseInsensitiveCompare(firstSub) == .orderedSame {
+            subParts.removeFirst()
+        }
+        if subParts.isEmpty { return rootRemoteDir }
+        return PathTools.join(rootRemoteDir, subParts.joined(separator: "/"))
+    }
+
+    /// Yüklemeden önce kullanıcıya gösterilecek canlı örnek linki üretir.
+    public static func previewLink(profile: ServerProfile,
+                                   remoteDirectory: String?,
+                                   folder: String?,
+                                   sampleFileName: String,
+                                   relativeSubfolder: String?,
+                                   format: String) -> String {
+        let autoSort = profile.autoSort.enabled
+            ? Template.autoSortPath(template: profile.autoSort.template, serverName: profile.name)
+            : nil
+        let baseDirectory = remoteDirectory ?? profile.remotePath
+        let rootRemoteDir = PathTools.join(baseDirectory, autoSort, folder)
+        let remoteDir = resolveRemoteDir(rootRemoteDir: rootRemoteDir, subfolder: relativeSubfolder)
+        let remotePath = PathTools.join(remoteDir, sampleFileName)
+        let linkPath = PathTools.relativePath(remotePath, base: profile.remotePath)
+        let rawURL = PathTools.sanitizeURL(PathTools.publicURL(profile: profile, remoteFilePath: linkPath))
+
+        let sampleURL = URL(fileURLWithPath: sampleFileName)
+        let thumbName = Self.thumbName(original: sampleURL, working: sampleURL, config: profile.thumbnails)
+        let thumbPath = PathTools.join(remoteDir, thumbName)
+        let thumbLinkPath = PathTools.relativePath(thumbPath, base: profile.remotePath)
+        let rawThumbURL = profile.thumbnails.enabled
+            ? PathTools.sanitizeURL(PathTools.publicURL(profile: profile, remoteFilePath: thumbLinkPath))
+            : nil
+
+        let fakeUploaded = UploadedFile(localPath: sampleFileName,
+                                        remoteURL: rawURL,
+                                        thumbURL: rawThumbURL,
+                                        bytes: 0)
+        return LinkTemplate.format(fakeUploaded, templateName: format, server: profile) ?? rawURL
+    }
+
     public func upload(files: [URL], profile: ServerProfile, options: UploadOptions) throws -> [UploadedFile] {
         guard !files.isEmpty else { return [] }
 
@@ -218,7 +265,7 @@ public struct UploadEngine {
             }
 
             let sub = subfolders[file.standardizedFileURL.path] ?? subfolders[file.path]
-            let remoteDir = PathTools.join(rootRemoteDir, sub)
+            let remoteDir = Self.resolveRemoteDir(rootRemoteDir: rootRemoteDir, subfolder: sub)
             var remoteName = Self.remoteName(original: file, working: workingFile)
 
             // 2) Çakışma kontrolü (sunucuda aynı isimde dosya var mı?)
@@ -334,14 +381,19 @@ public struct UploadEngine {
 
             func attempt(extra: [String]) throws -> TransportResult {
                 var args = baseArgs() + tlsArgs + extra
-                args.append(contentsOf: ["--ftp-skip-pasv-ip", "--disable-epsv", "--ftp-create-dirs", "-T", file.path, url])
+                args.append(contentsOf: ["--ftp-skip-pasv-ip", "--ftp-create-dirs", "-T", file.path, url])
                 return try transport.run(arguments: args, secretConfig: secret, onProgress: progress)
             }
 
-            var result = try attempt(extra: [])
-            // 28/7/56 = veri kanalı zaman aşımı/reddi: Active FTP (--ftp-port -) ile yeniden dene
-            if result.exitCode == 28 || result.exitCode == 7 || result.exitCode == 56 {
-                result = try attempt(extra: ["--ftp-port", "-"])
+            var result = try attempt(extra: ["--disable-epsv"])
+            // Geçici veri kanalı/PASV hatasında kısa bekleme sonrası yeniden dene (Active PORT kullanılmaz, NAT'ta 30 hatası verir)
+            if result.exitCode != 0 && result.exitCode != 67 {
+                usleep(400_000)
+                result = try attempt(extra: [])
+            }
+            if result.exitCode != 0 && result.exitCode != 67 {
+                usleep(600_000)
+                result = try attempt(extra: ["--disable-epsv"])
             }
             try ensureSuccess(result)
             return ("", result.stdout)
@@ -388,8 +440,19 @@ public struct UploadEngine {
 
     private func ensureSuccess(_ result: TransportResult) throws {
         guard result.exitCode == 0 else {
-            let message = result.stderr.isEmpty ? result.stdout : result.stderr
-            throw MCBUploadError.transportFailed(exitCode: result.exitCode, message: message)
+            let raw = result.stderr.isEmpty ? result.stdout : result.stderr
+            let cleaned = raw
+                .components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { line in
+                    guard !line.isEmpty else { return false }
+                    if line.hasPrefix("Warning: --ssl is an insecure option") { return false }
+                    // curl --progress-bar ASCII çubuk satırlarını (#, =, -, O, %, boşluk) ayıkla
+                    let nonBar = line.filter { !"#=-O0123456789.,% ".contains($0) }
+                    return !nonBar.isEmpty
+                }
+                .joined(separator: " ")
+            throw MCBUploadError.transportFailed(exitCode: result.exitCode, message: cleaned.isEmpty ? raw : cleaned)
         }
     }
 

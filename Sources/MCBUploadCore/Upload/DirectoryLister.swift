@@ -116,17 +116,51 @@ public struct DirectoryLister {
 
         func listAttempt(extra: [String]) throws -> TransportResult {
             let args = ["--silent", "--show-error", "--connect-timeout", "8", "--max-time", "15",
-                        "--ftp-skip-pasv-ip", "--disable-epsv"] + tlsArgs + extra + [url]
+                        "--ftp-skip-pasv-ip"] + tlsArgs + extra + [url]
             return try transport.run(arguments: args, secretConfig: credentials, onProgress: nil)
         }
 
-        var result = try listAttempt(extra: [])
-        if result.exitCode != 0 {
-            result = try listAttempt(extra: ["--ftp-port", "-"])
+        var result = try listAttempt(extra: ["--disable-epsv"])
+        // 9 = klasör yok (550), tekrar denemeye gerek yok; diğer ağ hatalarında EPSV ile bir kez daha dene
+        if result.exitCode != 0 && result.exitCode != 9 && result.exitCode != 67 {
+            usleep(300_000)
+            result = try listAttempt(extra: [])
         }
         guard result.exitCode == 0 else {
             throw MCBUploadError.transportFailed(exitCode: result.exitCode, message: result.stderr)
         }
         return FTPListingParser.parse(result.stdout)
+    }
+
+    /// Hedef klasörün sunucuda mevcut olup olmadığını kontrol eder (`true` = var, `false` = yok).
+    public func directoryExists(profile: ServerProfile, path: String) -> Bool {
+        switch profile.proto {
+        case .ftp, .ftps, .ftpsi:
+            var directoryPath = path.trimmingCharacters(in: .whitespaces)
+            if directoryPath.isEmpty { directoryPath = "/" }
+            if !directoryPath.hasPrefix("/") { directoryPath = "/" + directoryPath }
+            if !directoryPath.hasSuffix("/") { directoryPath += "/" }
+            let url = PathTools.transferURL(profile: profile, remoteFilePath: directoryPath)
+            let credentials = profile.username.isEmpty
+                ? ""
+                : CurlTransport.configLine(key: "user", value: "\(profile.username):\(profile.password)")
+            let tlsArgs: [String] = {
+                switch profile.proto {
+                case .ftps, .ftpsi: return ["-k", "--ssl-reqd"]
+                default: return ["-k", "--ssl"]
+                }
+            }()
+            let args = ["--silent", "--show-error", "-I", "--connect-timeout", "8", "--max-time", "12"] + tlsArgs + [url]
+            guard let result = try? transport.run(arguments: args, secretConfig: credentials, onProgress: nil) else {
+                return true
+            }
+            // Çıkış kodu 9 = CWD başarısız (klasör yok)
+            if result.exitCode == 9 { return false }
+            return true
+        case .sftp:
+            return (try? SFTPRunner().list(profile: profile, path: path)) != nil
+        case .http:
+            return true
+        }
     }
 }

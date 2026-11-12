@@ -151,6 +151,7 @@ final class MainWindowController: NSWindowController, NSTableViewDataSource, NST
     private var folderField: NSTextField!
     private var folderUserEdited = false
     private var browseButton: NSButton!
+    private var previewLabel: NSTextField!
     private var didPromptForFirstServer = false
 
     /// Çakışma diyaloğunda "Tümüne uygula" seçildiyse hatırlanacak toplu karar
@@ -188,6 +189,8 @@ final class MainWindowController: NSWindowController, NSTableViewDataSource, NST
         formatPopup = NSPopUpButton(frame: .zero, pullsDown: false)
         formatPopup.addItems(withTitles: ["url", "bbcode", "bbcode-image", "html", "html-image", "markdown", "markdown-image"])
         formatPopup.selectItem(withTitle: "bbcode-image")
+        formatPopup.target = self
+        formatPopup.action = #selector(formatChanged)
 
         addButton = NSButton(title: t("Dosya Ekle…"), target: self, action: #selector(addFilesTapped))
         uploadButton = NSButton(title: t("Yükle"), target: self, action: #selector(uploadTapped))
@@ -226,6 +229,15 @@ final class MainWindowController: NSWindowController, NSTableViewDataSource, NST
         folderRow.orientation = .horizontal
         folderRow.spacing = 8
         folderLabel.widthAnchor.constraint(equalToConstant: 50).isActive = true
+
+        // Yüklemeden önce canlı örnek URL önizleme satırı
+        previewLabel = NSTextField(labelWithString: "")
+        previewLabel.font = .monospacedSystemFont(ofSize: 11.5, weight: .regular)
+        previewLabel.textColor = .secondaryLabelColor
+        previewLabel.lineBreakMode = .byTruncatingMiddle
+        previewLabel.isSelectable = true
+        previewLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        previewLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         // Dosya tablosu
         tableView = NSTableView()
@@ -307,7 +319,7 @@ final class MainWindowController: NSWindowController, NSTableViewDataSource, NST
         footer.orientation = .horizontal
         footer.spacing = 8
 
-        let root = NSStackView(views: [header, folderRow, drop, progressRow, linksLabel, linksScroll, footer])
+        let root = NSStackView(views: [header, folderRow, previewLabel, drop, progressRow, linksLabel, linksScroll, footer])
         root.orientation = .vertical
         root.spacing = 10
         root.alignment = .leading
@@ -321,8 +333,8 @@ final class MainWindowController: NSWindowController, NSTableViewDataSource, NST
             root.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -12),
         ])
 
-        for view in [header, folderRow, drop, progressRow, linksScroll, footer] {
-            view.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
+        for view in [header, folderRow, previewLabel, drop, progressRow, linksScroll, footer] {
+            view?.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
         }
     }
 
@@ -370,6 +382,40 @@ final class MainWindowController: NSWindowController, NSTableViewDataSource, NST
             folderField?.stringValue = ""
             folderField?.placeholderString = t("HTTP yüklemelerinde klasörü sunucu belirler")
         }
+        updatePreviewURL()
+    }
+
+    private func updatePreviewURL() {
+        guard let profile = selectedProfile else {
+            previewLabel?.stringValue = ""
+            return
+        }
+        let format = formatPopup?.titleOfSelectedItem ?? "url"
+        let folderText = folderField?.stringValue.trimmingCharacters(in: .whitespaces) ?? ""
+        var remoteDir: String?
+        var subFolder: String?
+        if profile.proto != .http, !folderText.isEmpty {
+            if folderText.hasPrefix("/") {
+                remoteDir = folderText
+            } else {
+                subFolder = folderText
+            }
+        }
+        let selectedRow = tableView?.selectedRow ?? -1
+        let sampleItem: QueueItem? = (selectedRow >= 0 && items.indices.contains(selectedRow))
+            ? items[selectedRow]
+            : items.first
+        let sampleName = sampleItem?.url.lastPathComponent ?? "ornek.jpg"
+        let sampleRelative = sampleItem?.relativeSubfolder
+
+        let preview = UploadEngine.previewLink(profile: profile,
+                                               remoteDirectory: remoteDir,
+                                               folder: subFolder,
+                                               sampleFileName: sampleName,
+                                               relativeSubfolder: sampleRelative,
+                                               format: format)
+        previewLabel?.stringValue = t("Örnek URL: %@", preview)
+        previewLabel?.toolTip = preview
     }
 
     // MARK: - Sunucu ekleme / düzenleme
@@ -491,6 +537,7 @@ final class MainWindowController: NSWindowController, NSTableViewDataSource, NST
             .map { QueueItem(url: $0.url, relativeSubfolder: $0.relativeSubfolder) }
         items.append(contentsOf: newItems)
         tableView?.reloadData()
+        updatePreviewURL()
         statusLabel?.stringValue = t("%d dosya kuyrukta", items.count)
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
@@ -665,7 +712,44 @@ final class MainWindowController: NSWindowController, NSTableViewDataSource, NST
                                           batchPolicy: &batchPolicy)
         }
 
-        DispatchQueue.global(qos: .userInitiated).async {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+
+            // Kullanıcı yeni bir hedef klasör yazdıysa ve o klasör sunucuda henüz yoksa onay sor
+            if profile.proto != .http {
+                let autoSort = profile.autoSort.enabled
+                    ? Template.autoSortPath(template: profile.autoSort.template, serverName: profile.name)
+                    : nil
+                let baseDirectory = options.remoteDirectory ?? profile.remotePath
+                let targetRootDir = PathTools.join(baseDirectory, autoSort, options.folder)
+                DispatchQueue.main.async {
+                    self.statusLabel?.stringValue = t("Hedef klasör kontrol ediliyor…")
+                }
+                let exists = DirectoryLister().directoryExists(profile: profile, path: targetRootDir)
+                if !exists {
+                    var confirmed = false
+                    DispatchQueue.main.sync {
+                        NSApp.activate(ignoringOtherApps: true)
+                        let alert = NSAlert()
+                        alert.alertStyle = .warning
+                        alert.messageText = t("“%@” klasörü sunucuda yok", targetRootDir)
+                        alert.informativeText = t("Bu klasör sunucuda yeni oluşturulacak ve dosyalar içine yüklenecek. Emin misiniz?")
+                        alert.addButton(withTitle: t("Klasörü Oluştur ve Yükle"))
+                        alert.addButton(withTitle: t("İptal"))
+                        confirmed = (alert.runModal() == .alertFirstButtonReturn)
+                    }
+                    if !confirmed {
+                        DispatchQueue.main.async {
+                            self.isUploading = false
+                            self.uploadButton.isEnabled = true
+                            self.addButton.isEnabled = true
+                            self.statusLabel.stringValue = t("İptal")
+                        }
+                        return
+                    }
+                }
+            }
+
             var results: [UploadedFile] = []
             var failure: Error?
             do {
@@ -728,10 +812,19 @@ final class MainWindowController: NSWindowController, NSTableViewDataSource, NST
         updateFolderControls(force: true)
     }
 
+    @objc private func formatChanged() {
+        updatePreviewURL()
+    }
+
     func controlTextDidChange(_ notification: Notification) {
         if (notification.object as? NSTextField) === folderField {
             folderUserEdited = true
+            updatePreviewURL()
         }
+    }
+
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        updatePreviewURL()
     }
 
     @objc private func browseTapped() {
@@ -757,6 +850,7 @@ final class MainWindowController: NSWindowController, NSTableViewDataSource, NST
             self?.folderField.stringValue = path
             self?.folderUserEdited = true
             self?.activePicker = nil
+            self?.updatePreviewURL()
             self?.statusLabel?.stringValue = t("Hedef klasör: %@", path)
         }
         activePicker = picker
@@ -770,6 +864,7 @@ final class MainWindowController: NSWindowController, NSTableViewDataSource, NST
         tableView.reloadData()
         linksTextView.string = ""
         progressBar.doubleValue = 0
+        updatePreviewURL()
         statusLabel.stringValue = t("Liste temizlendi.")
     }
 

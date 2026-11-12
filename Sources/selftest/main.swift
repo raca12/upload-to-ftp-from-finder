@@ -181,6 +181,16 @@ try? FileManager.default.removeItem(at: treeRoot)
 
 expectEqual(UploadEngine.suggestUniqueName(for: "foto.jpg", existing: ["foto.jpg", "foto-1.jpg"]), "foto-2.jpg", "çakışmada sıradaki boş isim")
 expectEqual(CurlTransport.parsePercent("### 12.0%\r##### 48,5%\r###"), 0.485, "çok satırlı ve virgüllü yüzde okuma")
+expectEqual(UploadEngine.resolveRemoteDir(rootRemoteDir: "/public_html/projeler/sadikuygun", subfolder: "sadikuygun/alternatif"),
+            "/public_html/projeler/sadikuygun/alternatif", "mükerrer kök klasör kırpma")
+let previewSrv = ServerProfile(name: "AJ", proto: .ftp, host: "91.99.5.41", remotePath: "/public_html", publicBaseURL: "https://www.ajanstr.com.tr/")
+expectEqual(UploadEngine.previewLink(profile: previewSrv,
+                                     remoteDirectory: "/public_html/projeler/sadikuygun",
+                                     folder: nil,
+                                     sampleFileName: "404.html",
+                                     relativeSubfolder: "alternatif",
+                                     format: "url"),
+            "https://www.ajanstr.com.tr/projeler/sadikuygun/alternatif/404.html", "canlı örnek URL önizlemesi")
 
 // MARK: Yerelleştirme
 Localization.preferred = .english
