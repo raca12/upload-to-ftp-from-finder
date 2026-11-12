@@ -1,6 +1,6 @@
 cask "upload-to-ftp-from-finder" do
-  version "0.2.2"
-  sha256 "1faf2588d9e302f65ea3a643a514a963f4c7b5a1f391f44580834d64655a38ac"
+  version "0.2.3"
+  sha256 "9af48e0e41ef82fd706add8bbfda8c9f315a468780aff87c8e2c7d81cdee1a9c"
 
   url "https://github.com/raca12/upload-to-ftp-from-finder/releases/download/v#{version}/UploadToFTP-#{version}.dmg",
       verified: "github.com/raca12/upload-to-ftp-from-finder/"

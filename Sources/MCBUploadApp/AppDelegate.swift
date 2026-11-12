@@ -101,7 +101,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Menü çubuğu olmayan uygulamalarda kısayolların garanti çalışması için
         // yerel klavye izleyicisi (Edit menüsü + bu katman birlikte çalışır).
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            guard event.modifierFlags.contains(.command) else { return event }
+            // macOS'ta standart ⌘V; Windows alışkanlığıyla Ctrl+V de kabul edilir.
+            let hasCommand = event.modifierFlags.contains(.command)
+            let hasControl = event.modifierFlags.contains(.control)
+            guard hasCommand || hasControl else { return event }
             let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
             let shift = event.modifierFlags.contains(.shift)
 

@@ -3,6 +3,11 @@
 All notable changes to **Upload to FTP from Finder** are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.2.3] — 2026-11-12
+
+### Added
+- **Ctrl+V** (and Ctrl+C/X/A/Z) now works in text fields, in addition to ⌘V — for users switching from Windows
+
 ## [0.2.2] — 2026-11-12
 
 ### Fixed
