@@ -97,6 +97,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         add("Tümünü Seç", #selector(NSText.selectAll(_:)), "a")
 
         NSApp.mainMenu = mainMenu
+
+        // Menü çubuğu olmayan uygulamalarda kısayolların garanti çalışması için
+        // yerel klavye izleyicisi (Edit menüsü + bu katman birlikte çalışır).
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard event.modifierFlags.contains(.command) else { return event }
+            let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
+            let shift = event.modifierFlags.contains(.shift)
+
+            let selector: Selector?
+            switch key {
+            case "v": selector = #selector(NSText.paste(_:))
+            case "c": selector = #selector(NSText.copy(_:))
+            case "x": selector = #selector(NSText.cut(_:))
+            case "a": selector = #selector(NSText.selectAll(_:))
+            case "z": selector = shift ? Selector(("redo:")) : Selector(("undo:"))
+            default: selector = nil
+            }
+
+            guard let selector, NSApp.keyWindow?.firstResponder is NSText else { return event }
+            if NSApp.sendAction(selector, to: nil, from: nil) { return nil }
+            return event
+        }
     }
 
     // MARK: - Menu bar

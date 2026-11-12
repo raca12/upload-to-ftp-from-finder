@@ -3,6 +3,12 @@
 All notable changes to **Upload to FTP from Finder** are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.2.2] — 2026-11-12
+
+### Fixed
+- Editing shortcuts (⌘V/⌘C/⌘X/⌘A/⌘Z) are now also captured by a local key monitor,
+  so paste works even if the hidden Edit menu is not reached (e.g. inside sheets)
+
 ## [0.2.1] — 2026-11-12
 
 ### Fixed
