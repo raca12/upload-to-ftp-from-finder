@@ -8,27 +8,99 @@ final class QueueItem {
         case queued
         case uploading(Int)
         case done
+        case skipped
         case error
     }
 
     let url: URL
+    let relativeSubfolder: String?
     var state: State = .queued
     var progress: Double = 0
     let size: Int64
 
+    var displayName: String {
+        if let sub = relativeSubfolder, !sub.isEmpty {
+            return "\(sub)/\(url.lastPathComponent)"
+        }
+        return url.lastPathComponent
+    }
+
     var statusText: String {
         switch state {
         case .queued: return t("Sırada")
-        case .uploading(let percent): return t("Yükleniyor %d%%", percent)
-        case .done: return t("Tamam")
-        case .error: return t("Hata")
+        case .uploading(let percent): return "\(percent)%"
+        case .done: return "✓ " + t("Tamam")
+        case .skipped: return t("Atlandı")
+        case .error: return "✗ " + t("Hata")
         }
     }
 
-    init(url: URL) {
+    init(url: URL, relativeSubfolder: String? = nil) {
         self.url = url
+        self.relativeSubfolder = relativeSubfolder
         let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
         self.size = (attributes?[.size] as? NSNumber)?.int64Value ?? 0
+    }
+}
+
+// MARK: - Tablo satırı ilerleme çubuğu hücresi
+
+final class StatusCellView: NSTableCellView {
+    let bar = NSProgressIndicator()
+    let label = NSTextField(labelWithString: "")
+
+    init(identifier: NSUserInterfaceItemIdentifier) {
+        super.init(frame: .zero)
+        self.identifier = identifier
+
+        bar.style = .bar
+        bar.isIndeterminate = false
+        bar.minValue = 0
+        bar.maxValue = 100
+        bar.doubleValue = 0
+        bar.controlSize = .small
+        bar.translatesAutoresizingMaskIntoConstraints = false
+
+        label.font = .monospacedDigitSystemFont(ofSize: 11.5, weight: .medium)
+        label.lineBreakMode = .byTruncatingTail
+        label.alignment = .right
+        label.translatesAutoresizingMaskIntoConstraints = false
+
+        addSubview(bar)
+        addSubview(label)
+
+        NSLayoutConstraint.activate([
+            bar.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+            bar.centerYAnchor.constraint(equalTo: centerYAnchor),
+            bar.widthAnchor.constraint(equalToConstant: 120),
+
+            label.leadingAnchor.constraint(equalTo: bar.trailingAnchor, constant: 8),
+            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) desteklenmiyor") }
+
+    func configure(with item: QueueItem) {
+        label.stringValue = item.statusText
+        switch item.state {
+        case .queued:
+            bar.doubleValue = 0
+            label.textColor = .secondaryLabelColor
+        case .uploading(let pct):
+            bar.doubleValue = Double(max(2, pct))
+            label.textColor = .controlAccentColor
+        case .done:
+            bar.doubleValue = 100
+            label.textColor = .systemGreen
+        case .skipped:
+            bar.doubleValue = 0
+            label.textColor = .systemOrange
+        case .error:
+            bar.doubleValue = 0
+            label.textColor = .systemRed
+        }
     }
 }
 
@@ -80,6 +152,14 @@ final class MainWindowController: NSWindowController, NSTableViewDataSource, NST
     private var folderUserEdited = false
     private var browseButton: NSButton!
     private var didPromptForFirstServer = false
+
+    /// Çakışma diyaloğunda "Tümüne uygula" seçildiyse hatırlanacak toplu karar
+    private enum BatchConflictPolicy {
+        case ask
+        case overwriteAll
+        case renameAll
+        case skipAll
+    }
 
     convenience init() {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 780, height: 580),
@@ -151,11 +231,11 @@ final class MainWindowController: NSWindowController, NSTableViewDataSource, NST
         tableView = NSTableView()
         tableView.dataSource = self
         tableView.delegate = self
-        tableView.rowHeight = 22
+        tableView.rowHeight = 26
         tableView.usesAlternatingRowBackgroundColors = true
         tableView.allowsMultipleSelection = true
 
-        for (identifier, title, width) in [("file", t("Dosya"), 380.0), ("status", t("Durum"), 220.0), ("size", t("Boyut"), 90.0)] {
+        for (identifier, title, width) in [("file", t("Dosya"), 380.0), ("status", t("Durum"), 230.0), ("size", t("Boyut"), 90.0)] {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(identifier))
             column.title = title
             column.width = width
@@ -388,15 +468,15 @@ final class MainWindowController: NSWindowController, NSTableViewDataSource, NST
         return profiles.indices.contains(index) ? profiles[index] : nil
     }
 
-    // MARK: - Dosya ekleme
+    // MARK: - Dosya ve klasör ekleme (alt klasörler dahil)
 
     func addFilesViaPanel() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
-        panel.canChooseDirectories = false
+        panel.canChooseDirectories = true
         panel.canChooseFiles = true
-        panel.prompt = "Kuyruğa Ekle"
-        panel.message = "Yüklenecek dosyaları seç"
+        panel.prompt = t("Kuyruğa Ekle")
+        panel.message = t("Yüklenecek dosya veya klasörleri seç")
         panel.begin { [weak self] response in
             guard response == .OK else { return }
             self?.addFiles(panel.urls)
@@ -404,16 +484,91 @@ final class MainWindowController: NSWindowController, NSTableViewDataSource, NST
     }
 
     func addFiles(_ urls: [URL]) {
-        let existing = Set(items.map { $0.url })
-        let newItems = urls
-            .map { $0.standardizedFileURL }
-            .filter { !existing.contains($0) }
-            .map(QueueItem.init(url:))
+        let expanded = UploadEngine.expandFiles(urls)
+        let existing = Set(items.map { $0.url.standardizedFileURL })
+        let newItems = expanded
+            .filter { !existing.contains($0.url.standardizedFileURL) }
+            .map { QueueItem(url: $0.url, relativeSubfolder: $0.relativeSubfolder) }
         items.append(contentsOf: newItems)
         tableView?.reloadData()
         statusLabel?.stringValue = t("%d dosya kuyrukta", items.count)
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
+    }
+
+    // MARK: - Çakışma diyaloğu (Üzerine Yaz / İsim Değiştir / Atla)
+
+    private func askConflictOnMain(remoteDir: String,
+                                   existingName: String,
+                                   suggestedName: String,
+                                   batchPolicy: inout BatchConflictPolicy) -> UploadConflictResolution {
+        switch batchPolicy {
+        case .overwriteAll: return .overwrite
+        case .renameAll: return .rename(suggestedName)
+        case .skipAll: return .skip
+        case .ask: break
+        }
+
+        var chosenResolution: UploadConflictResolution = .overwrite
+        var chosenBatch: BatchConflictPolicy = .ask
+
+        let work = {
+            NSApp.activate(ignoringOtherApps: true)
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = t("“%@” sunucuda zaten var", existingName)
+            alert.informativeText = t("Hedef klasör: %@\nÜzerine yazmak mı, yeni isimle kaydetmek mi istersin?", remoteDir)
+            alert.addButton(withTitle: t("Üzerine Yaz"))
+            alert.addButton(withTitle: t("İsim Değiştir"))
+            alert.addButton(withTitle: t("Atla"))
+            alert.addButton(withTitle: t("İptal"))
+
+            let container = NSView(frame: NSRect(x: 0, y: 0, width: 340, height: 58))
+            let nameLabel = NSTextField(labelWithString: t("Yeni dosya adı:"))
+            nameLabel.font = .systemFont(ofSize: 12)
+            nameLabel.frame = NSRect(x: 0, y: 34, width: 100, height: 20)
+
+            let nameField = NSTextField(string: suggestedName)
+            nameField.frame = NSRect(x: 104, y: 32, width: 236, height: 24)
+
+            let applyAllCheck = NSButton(checkboxWithTitle: t("Bu yüklemedeki tüm çakışmalara uygula"),
+                                         target: nil, action: nil)
+            applyAllCheck.frame = NSRect(x: 0, y: 4, width: 340, height: 20)
+
+            container.addSubview(nameLabel)
+            container.addSubview(nameField)
+            container.addSubview(applyAllCheck)
+            alert.accessoryView = container
+
+            let response = alert.runModal()
+            let applyAll = applyAllCheck.state == .on
+
+            switch response {
+            case .alertFirstButtonReturn:
+                chosenResolution = .overwrite
+                if applyAll { chosenBatch = .overwriteAll }
+            case .alertSecondButtonReturn:
+                let entered = nameField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                chosenResolution = .rename(entered.isEmpty ? suggestedName : entered)
+                if applyAll { chosenBatch = .renameAll }
+            case .alertThirdButtonReturn:
+                chosenResolution = .skip
+                if applyAll { chosenBatch = .skipAll }
+            default:
+                chosenResolution = .cancel
+            }
+        }
+
+        if Thread.isMainThread {
+            work()
+        } else {
+            DispatchQueue.main.sync(execute: work)
+        }
+
+        if chosenBatch != .ask {
+            batchPolicy = chosenBatch
+        }
+        return chosenResolution
     }
 
     // MARK: - Yükleme
@@ -431,7 +586,6 @@ final class MainWindowController: NSWindowController, NSTableViewDataSource, NST
     func startUpload(to profile: ServerProfile) {
         guard AppLock.shared.require(.upload) else { return }
         guard !isUploading else { return }
-        // Parola yalnızca yükleme anında Keychain'den okunur
         var profile = profile
         profile.password = store.password(for: profile)
         guard !items.isEmpty else {
@@ -452,9 +606,15 @@ final class MainWindowController: NSWindowController, NSTableViewDataSource, NST
 
         let format = formatPopup.titleOfSelectedItem ?? "url"
         let urls = items.map { $0.url }
+        var subfoldersByFile: [String: String] = [:]
+        for item in items {
+            if let sub = item.relativeSubfolder, !sub.isEmpty {
+                subfoldersByFile[item.url.standardizedFileURL.path] = sub
+            }
+        }
         let engine = self.engine
 
-        var options = UploadOptions(format: format)
+        var options = UploadOptions(format: format, subfoldersByFile: subfoldersByFile)
         let folderText = folderField.stringValue.trimmingCharacters(in: .whitespaces)
         if profile.proto != .http, !folderText.isEmpty {
             if folderText.hasPrefix("/") {
@@ -471,15 +631,38 @@ final class MainWindowController: NSWindowController, NSTableViewDataSource, NST
         options.onFileProgress = { [weak self] file, value in
             DispatchQueue.main.async {
                 guard let self else { return }
-                if let index = self.items.firstIndex(where: { $0.url == file }) {
+                let standardized = file.standardizedFileURL
+                if let index = self.items.firstIndex(where: { $0.url.standardizedFileURL == standardized }) {
                     self.items[index].progress = value
-                    self.items[index].state = .uploading(Int(value * 100))
+                    let pct = Int((value * 100).rounded())
+                    self.items[index].state = pct >= 100 ? .done : .uploading(pct)
                     self.tableView.reloadData(forRowIndexes: IndexSet(integer: index),
                                               columnIndexes: IndexSet(integersIn: 0..<3))
                 }
                 let total = self.items.reduce(0.0) { $0 + $1.progress } / Double(max(1, self.items.count))
                 self.progressBar.doubleValue = total
             }
+        }
+        options.onFileSkipped = { [weak self] file in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                let standardized = file.standardizedFileURL
+                if let index = self.items.firstIndex(where: { $0.url.standardizedFileURL == standardized }) {
+                    self.items[index].progress = 1
+                    self.items[index].state = .skipped
+                    self.tableView.reloadData(forRowIndexes: IndexSet(integer: index),
+                                              columnIndexes: IndexSet(integersIn: 0..<3))
+                }
+            }
+        }
+
+        var batchPolicy: BatchConflictPolicy = .ask
+        options.onConflict = { [weak self] remoteDir, existingName, suggestedName in
+            guard let self else { return .overwrite }
+            return self.askConflictOnMain(remoteDir: remoteDir,
+                                          existingName: existingName,
+                                          suggestedName: suggestedName,
+                                          batchPolicy: &batchPolicy)
         }
 
         DispatchQueue.global(qos: .userInitiated).async {
@@ -501,9 +684,10 @@ final class MainWindowController: NSWindowController, NSTableViewDataSource, NST
         uploadButton.isEnabled = true
         addButton.isEnabled = true
 
-        let donePaths = Set(results.map { $0.localPath })
+        let donePaths = Set(results.map { URL(fileURLWithPath: $0.localPath).standardizedFileURL.path })
         for item in items {
-            if donePaths.contains(item.url.path) {
+            if case .skipped = item.state { continue }
+            if donePaths.contains(item.url.standardizedFileURL.path) {
                 item.state = .done
                 item.progress = 1
             } else if error != nil {
@@ -608,6 +792,15 @@ final class MainWindowController: NSWindowController, NSTableViewDataSource, NST
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         guard let tableColumn, items.indices.contains(row) else { return nil }
         let identifier = tableColumn.identifier
+        let item = items[row]
+
+        if identifier.rawValue == "status" {
+            let cell = (tableView.makeView(withIdentifier: identifier, owner: self) as? StatusCellView)
+                ?? StatusCellView(identifier: identifier)
+            cell.configure(with: item)
+            return cell
+        }
+
         var field = tableView.makeView(withIdentifier: identifier, owner: self) as? NSTextField
         if field == nil {
             let label = NSTextField(labelWithString: "")
@@ -616,18 +809,11 @@ final class MainWindowController: NSWindowController, NSTableViewDataSource, NST
             label.font = .systemFont(ofSize: 12)
             field = label
         }
-        let item = items[row]
         switch identifier.rawValue {
         case "file":
-            field?.stringValue = item.url.lastPathComponent
+            field?.stringValue = item.displayName
+            field?.toolTip = item.url.path
             field?.textColor = .labelColor
-        case "status":
-            field?.stringValue = item.statusText
-            switch item.state {
-            case .error: field?.textColor = .systemRed
-            case .done: field?.textColor = .systemGreen
-            default: field?.textColor = .secondaryLabelColor
-            }
         case "size":
             field?.stringValue = ByteCountFormatter.string(fromByteCount: item.size, countStyle: .file)
             field?.textColor = .secondaryLabelColor

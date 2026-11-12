@@ -267,9 +267,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Finder'da "Birlikte Aç → Upload to FTP from Finder"
     func application(_ application: NSApplication, open urls: [URL]) {
-        let files = urls.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == false }
-        guard !files.isEmpty else { return }
+        guard !urls.isEmpty else { return }
         showWindow()
-        windowController?.addFiles(files)
+        windowController?.addFiles(urls)
     }
 }

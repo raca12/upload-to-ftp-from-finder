@@ -110,7 +110,7 @@ final class FinderSyncExtension: FIFinderSync {
 
     // MARK: - Eylemler
 
-    /// Seçili dosyalar; klasör seçildiyse içindeki dosyaları (en fazla 300) toplar.
+    /// Seçili dosyalar ve içi dolu klasörler (ana uygulama alt klasör yapısını koruyarak açar).
     private var selectedFiles: [String] {
         let urls = FIFinderSyncController.default().selectedItemURLs()
             ?? [FIFinderSyncController.default().targetedURL()].compactMap { $0 }
@@ -119,7 +119,9 @@ final class FinderSyncExtension: FIFinderSync {
             var isDirectory: ObjCBool = false
             guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else { continue }
             if isDirectory.boolValue {
-                files.append(contentsOf: Self.files(in: url, limit: 300))
+                if !Self.files(in: url, limit: 1).isEmpty {
+                    files.append(url.path)
+                }
             } else {
                 files.append(url.path)
             }

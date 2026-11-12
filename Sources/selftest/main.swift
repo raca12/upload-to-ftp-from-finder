@@ -164,6 +164,24 @@ try kcStore.save([kcServer])
 expect(credStore.password(for: kcServer.id.uuidString) == nil, "boş parola keychain'den silindi")
 try? FileManager.default.removeItem(at: secBase2)
 
+// MARK: Alt klasör açma ve çakışma isimlendirme
+let treeRoot = FileManager.default.temporaryDirectory.appendingPathComponent("mcb-tree-\(UUID().uuidString)")
+let nestedDir = treeRoot.appendingPathComponent("kampanya/2026/nisan", isDirectory: true)
+try FileManager.default.createDirectory(at: nestedDir, withIntermediateDirectories: true)
+let topFile = treeRoot.appendingPathComponent("kampanya/kapak.jpg")
+let nestedFile = nestedDir.appendingPathComponent("banner.jpg")
+try Data("1".utf8).write(to: topFile)
+try Data("2".utf8).write(to: nestedFile)
+
+let expanded = UploadEngine.expandFiles([treeRoot.appendingPathComponent("kampanya")])
+expectEqual(expanded.count, 2, "alt klasörlerdeki tüm dosyalar bulundu")
+expect(expanded.contains(where: { $0.relativeSubfolder == "kampanya" && $0.url.lastPathComponent == "kapak.jpg" }), "üst klasör göreli yolu")
+expect(expanded.contains(where: { $0.relativeSubfolder == "kampanya/2026/nisan" && $0.url.lastPathComponent == "banner.jpg" }), "iç içe alt klasör göreli yolu")
+try? FileManager.default.removeItem(at: treeRoot)
+
+expectEqual(UploadEngine.suggestUniqueName(for: "foto.jpg", existing: ["foto.jpg", "foto-1.jpg"]), "foto-2.jpg", "çakışmada sıradaki boş isim")
+expectEqual(CurlTransport.parsePercent("### 12.0%\r##### 48,5%\r###"), 0.485, "çok satırlı ve virgüllü yüzde okuma")
+
 // MARK: Yerelleştirme
 Localization.preferred = .english
 expectEqual(Localization.text("Yükle"), "Upload", "İngilizce çeviri")

@@ -1,9 +1,36 @@
 import Foundation
 import UniformTypeIdentifiers
 
+// MARK: - Dosya çakışması çözümü
+
+public enum UploadConflictResolution: Equatable, Sendable {
+    case overwrite
+    case rename(String)
+    case skip
+    case cancel
+}
+
+public struct ExpandedUploadItem: Equatable, Sendable {
+    public let url: URL
+    /// Klasör seçildiyse sunucuda korunacak göreli alt klasör yolu (örn. "kampanya/2026")
+    public let relativeSubfolder: String?
+
+    public init(url: URL, relativeSubfolder: String? = nil) {
+        self.url = url
+        self.relativeSubfolder = relativeSubfolder
+    }
+
+    public var displayName: String {
+        if let sub = relativeSubfolder, !sub.isEmpty {
+            return "\(sub)/\(url.lastPathComponent)"
+        }
+        return url.lastPathComponent
+    }
+}
+
 // MARK: - Yükleme motoru
 //
-// Akış: resize (opsiyonel) -> yükle -> thumbnail üret & yükle -> link üret
+// Akış: klasörleri aç -> çakışma kontrolü -> resize -> yükle -> thumbnail -> link üret
 
 public struct UploadOptions {
     public var format: String
@@ -11,25 +38,36 @@ public struct UploadOptions {
     public var remoteDirectory: String?
     /// Seçilen klasörün altına eklenecek alt klasör
     public var folder: String?
+    /// Dosya bazlı göreli alt klasör haritası (standardizedFileURL.path -> "alt/klasor")
+    public var subfoldersByFile: [String: String]
     public var makeThumbnail: Bool?
     public var dryRun: Bool
     public var onFileProgress: ((URL, Double) -> Void)?
+    public var onFileSkipped: ((URL) -> Void)?
     public var onStatus: ((String) -> Void)?
+    /// (remoteDir, existingFilename, suggestedNewName) -> çözüm
+    public var onConflict: ((String, String, String) -> UploadConflictResolution)?
 
     public init(format: String = "url",
                 remoteDirectory: String? = nil,
                 folder: String? = nil,
+                subfoldersByFile: [String: String] = [:],
                 makeThumbnail: Bool? = nil,
                 dryRun: Bool = false,
                 onFileProgress: ((URL, Double) -> Void)? = nil,
-                onStatus: ((String) -> Void)? = nil) {
+                onFileSkipped: ((URL) -> Void)? = nil,
+                onStatus: ((String) -> Void)? = nil,
+                onConflict: ((String, String, String) -> UploadConflictResolution)? = nil) {
         self.format = format
         self.remoteDirectory = remoteDirectory
         self.folder = folder
+        self.subfoldersByFile = subfoldersByFile
         self.makeThumbnail = makeThumbnail
         self.dryRun = dryRun
         self.onFileProgress = onFileProgress
+        self.onFileSkipped = onFileSkipped
         self.onStatus = onStatus
+        self.onConflict = onConflict
     }
 }
 
@@ -42,17 +80,116 @@ public struct UploadEngine {
         self.images = images
     }
 
+    /// Verilen dosya ve klasör URL'lerini tarar; klasörlerin içindeki alt klasörleri göreli yollarıyla açar.
+    public static func expandFiles(_ urls: [URL], limit: Int = 2000) -> [ExpandedUploadItem] {
+        var out: [ExpandedUploadItem] = []
+        var seen = Set<String>()
+        let fm = FileManager.default
+        let keys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey, .isHiddenKey]
+
+        for rawURL in urls {
+            let url = rawURL.standardizedFileURL
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: url.path, isDirectory: &isDir) else { continue }
+
+            if !isDir.boolValue {
+                if seen.insert(url.path).inserted {
+                    out.append(ExpandedUploadItem(url: url, relativeSubfolder: nil))
+                }
+                continue
+            }
+
+            let rootFolderName = url.lastPathComponent
+            let rootPath = url.path.hasSuffix("/") ? url.path : url.path + "/"
+            guard let enumerator = fm.enumerator(at: url,
+                                                 includingPropertiesForKeys: keys,
+                                                 options: [.skipsHiddenFiles, .skipsPackageDescendants]) else {
+                continue
+            }
+            for case let childURL as URL in enumerator {
+                if out.count >= limit { break }
+                let standardized = childURL.standardizedFileURL
+                let values = try? standardized.resourceValues(forKeys: Set(keys))
+                if values?.isDirectory == true { continue }
+                if (values?.isHidden ?? false) || standardized.lastPathComponent == ".DS_Store" { continue }
+                guard seen.insert(standardized.path).inserted else { continue }
+
+                var relDir = ""
+                if standardized.path.hasPrefix(rootPath) {
+                    let sub = String(standardized.path.dropFirst(rootPath.count))
+                    let dirPart = (sub as NSString).deletingLastPathComponent
+                    relDir = dirPart.isEmpty || dirPart == "."
+                        ? rootFolderName
+                        : "\(rootFolderName)/\(dirPart)"
+                } else {
+                    relDir = rootFolderName
+                }
+                out.append(ExpandedUploadItem(url: standardized, relativeSubfolder: relDir))
+            }
+        }
+        return out
+    }
+
+    /// Çakışma durumunda klasörde olmayan "dosya-1.jpg", "dosya-2.jpg" gibi benzersiz bir ad önerir.
+    public static func suggestUniqueName(for filename: String, existing: Set<String>) -> String {
+        let ns = filename as NSString
+        let ext = ns.pathExtension
+        let stem = ns.deletingPathExtension
+        let lowered = Set(existing.map { $0.lowercased() })
+        for index in 1...999 {
+            let candidate = ext.isEmpty ? "\(stem)-\(index)" : "\(stem)-\(index).\(ext)"
+            if !lowered.contains(candidate.lowercased()) {
+                return candidate
+            }
+        }
+        return ext.isEmpty ? "\(stem)-\(UUID().uuidString.prefix(4))" : "\(stem)-\(UUID().uuidString.prefix(4)).\(ext)"
+    }
+
     public func upload(files: [URL], profile: ServerProfile, options: UploadOptions) throws -> [UploadedFile] {
         guard !files.isEmpty else { return [] }
+
+        // Doğrudan klasör URL'si verildiyse alt klasörleriyle aç
+        var fileList: [URL] = []
+        var subfolders = options.subfoldersByFile
+        for url in files {
+            var isDir: ObjCBool = false
+            if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue {
+                for item in Self.expandFiles([url]) {
+                    fileList.append(item.url)
+                    if let sub = item.relativeSubfolder {
+                        subfolders[item.url.standardizedFileURL.path] = sub
+                    }
+                }
+            } else {
+                fileList.append(url)
+            }
+        }
+
         var results: [UploadedFile] = []
 
         let autoSort = profile.autoSort.enabled
             ? Template.autoSortPath(template: profile.autoSort.template, serverName: profile.name)
             : nil
         let baseDirectory = options.remoteDirectory ?? profile.remotePath
-        let remoteDir = PathTools.join(baseDirectory, autoSort, options.folder)
+        let rootRemoteDir = PathTools.join(baseDirectory, autoSort, options.folder)
 
-        for file in files {
+        // Klasör bazlı mevcut dosya önbelleği (çakışma tespiti için)
+        var existingFilesByDir: [String: Set<String>] = [:]
+        let lister = DirectoryLister(transport: transport)
+
+        func existingFiles(in dir: String) -> Set<String> {
+            if let cached = existingFilesByDir[dir] { return cached }
+            guard !options.dryRun, profile.proto != .http else {
+                existingFilesByDir[dir] = []
+                return []
+            }
+            let entries = (try? lister.list(profile: profile, path: dir)) ?? []
+            let names = Set(entries.filter { !$0.isDirectory }.map { $0.name })
+            existingFilesByDir[dir] = names
+            return names
+        }
+
+        for file in fileList {
             var isDir: ObjCBool = false
             guard FileManager.default.fileExists(atPath: file.path, isDirectory: &isDir), !isDir.boolValue else {
                 throw MCBUploadError.fileNotFound(file.path)
@@ -60,6 +197,7 @@ public struct UploadEngine {
 
             let status = options.onStatus
             status?("Hazırlanıyor: \(file.lastPathComponent)")
+            options.onFileProgress?(file, 0.02)
 
             // 1) Yükleme öncesi yeniden boyutlandırma
             var workingFile = file
@@ -79,10 +217,38 @@ public struct UploadEngine {
                 if let tempToClean { try? FileManager.default.removeItem(at: tempToClean) }
             }
 
-            let remoteName = Self.remoteName(original: file, working: workingFile)
+            let sub = subfolders[file.standardizedFileURL.path] ?? subfolders[file.path]
+            let remoteDir = PathTools.join(rootRemoteDir, sub)
+            var remoteName = Self.remoteName(original: file, working: workingFile)
+
+            // 2) Çakışma kontrolü (sunucuda aynı isimde dosya var mı?)
+            if let onConflict = options.onConflict, !options.dryRun, profile.proto != .http {
+                var known = existingFiles(in: remoteDir)
+                if known.contains(where: { $0.caseInsensitiveCompare(remoteName) == .orderedSame }) {
+                    let suggested = Self.suggestUniqueName(for: remoteName, existing: known)
+                    let decision = onConflict(remoteDir, remoteName, suggested)
+                    switch decision {
+                    case .overwrite:
+                        break
+                    case .rename(let customName):
+                        let cleaned = customName.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !cleaned.isEmpty { remoteName = cleaned }
+                    case .skip:
+                        status?("Atlandı: \(remoteName)")
+                        options.onFileSkipped?(file)
+                        continue
+                    case .cancel:
+                        TempFiles.cleanup()
+                        return results
+                    }
+                }
+                known.insert(remoteName)
+                existingFilesByDir[remoteDir] = known
+            }
+
             let remotePath = PathTools.join(remoteDir, remoteName)
 
-            // 2) Ana dosya
+            // 3) Ana dosya
             status?("Yükleniyor: \(remoteName)")
             let uploaded = try transfer(file: workingFile,
                                         profile: profile,
@@ -90,6 +256,7 @@ public struct UploadEngine {
                                         remoteName: remoteName,
                                         fieldName: nil,
                                         options: options)
+            options.onFileProgress?(file, 1.0)
 
             let linkPath = PathTools.relativePath(remotePath, base: profile.remotePath)
             var remoteURL = uploaded.url
@@ -98,7 +265,7 @@ public struct UploadEngine {
             }
             remoteURL = PathTools.sanitizeURL(remoteURL)
 
-            // 3) Thumbnail
+            // 4) Thumbnail
             var thumbURL: String?
             let wantsThumb = options.makeThumbnail ?? profile.thumbnails.enabled
             if wantsThumb, profile.thumbnails.upload, images.isImage(file) {
@@ -108,7 +275,8 @@ public struct UploadEngine {
                                                              maxHeight: profile.thumbnails.maxHeight,
                                                              quality: profile.thumbnails.quality) {
                         defer { try? FileManager.default.removeItem(at: thumbLocal) }
-                        let thumbName = Self.thumbName(original: file, working: thumbLocal, config: profile.thumbnails)
+                        let renamedURL = URL(fileURLWithPath: remoteName)
+                        let thumbName = Self.thumbName(original: renamedURL, working: thumbLocal, config: profile.thumbnails)
                         let thumbPath = PathTools.join(remoteDir, thumbName)
                         status?("Thumbnail yükleniyor: \(thumbName)")
                         let thumbUpload = try transfer(file: thumbLocal,

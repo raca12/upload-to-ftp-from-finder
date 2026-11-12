@@ -89,7 +89,7 @@ public struct CurlTransport: Transport {
                 if let onProgress,
                    let text = String(data: chunk, encoding: .utf8),
                    let pct = CurlTransport.parsePercent(text),
-                   abs(pct - emitted) >= 0.02 || pct >= 0.999 {
+                   abs(pct - emitted) >= 0.005 || pct >= 0.999 {
                     emitted = pct
                     lastProgress = pct
                     onProgress(pct)
@@ -116,12 +116,17 @@ public struct CurlTransport: Transport {
     }
 
     public static func parsePercent(_ text: String) -> Double? {
-        // Progress bar çıktısı "\r" ile bölünür; son parçayı al.
-        let segment = text.split(whereSeparator: { $0 == "\r" || $0 == "\n" }).last.map(String.init) ?? text
-        guard let range = segment.range(of: #"([0-9]{1,3}(?:\.[0-9]+)?)\s*%"#, options: .regularExpression) else {
+        guard let regex = try? NSRegularExpression(pattern: #"([0-9]{1,3}(?:[.,][0-9]+)?)\s*%"#) else {
             return nil
         }
-        let raw = segment[range].replacingOccurrences(of: "%", with: "")
+        let nsRange = NSRange(text.startIndex..<text.endIndex, in: text)
+        let matches = regex.matches(in: text, range: nsRange)
+        guard let last = matches.last,
+              last.numberOfRanges > 1,
+              let range = Range(last.range(at: 1), in: text) else {
+            return nil
+        }
+        let raw = String(text[range]).replacingOccurrences(of: ",", with: ".")
             .trimmingCharacters(in: .whitespaces)
         guard let value = Double(raw) else { return nil }
         return min(1, max(0, value / 100))
