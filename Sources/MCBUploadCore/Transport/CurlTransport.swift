@@ -47,7 +47,11 @@ public struct CurlTransport: Transport {
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: curlPath)
-        process.arguments = arguments
+        var finalArguments = arguments
+        if !secretConfig.isEmpty && !finalArguments.contains("--config") && !finalArguments.contains("-K") {
+            finalArguments.insert(contentsOf: ["--config", "-"], at: 0)
+        }
+        process.arguments = finalArguments
 
         let outPipe = Pipe()
         let errPipe = Pipe()

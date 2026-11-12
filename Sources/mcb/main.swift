@@ -62,7 +62,7 @@ guard let command = argv.first, !["-h", "--help", "help"].contains(command) else
 argv.removeFirst()
 
 if command == "--version" || command == "version" {
-    out("mcb 0.2.4 (Upload to FTP from Finder)")
+    out("mcb 0.2.5 (Upload to FTP from Finder)")
     exit(0)
 }
 

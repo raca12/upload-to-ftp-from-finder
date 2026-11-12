@@ -103,14 +103,27 @@ public struct DirectoryLister {
         if !directoryPath.hasSuffix("/") { directoryPath += "/" }
 
         let url = PathTools.transferURL(profile: profile, remoteFilePath: directoryPath)
-        var args = ["--silent", "--show-error", "--max-time", "25", url]
-        if profile.proto == .ftps { args.append("--ssl-reqd") }
-
         let credentials = profile.username.isEmpty
             ? ""
             : CurlTransport.configLine(key: "user", value: "\(profile.username):\(profile.password)")
 
-        let result = try transport.run(arguments: args, secretConfig: credentials, onProgress: nil)
+        let tlsArgs: [String] = {
+            switch profile.proto {
+            case .ftps, .ftpsi: return ["-k", "--ssl-reqd"]
+            default: return ["-k", "--ssl"]
+            }
+        }()
+
+        func listAttempt(extra: [String]) throws -> TransportResult {
+            let args = ["--silent", "--show-error", "--connect-timeout", "8", "--max-time", "15",
+                        "--ftp-skip-pasv-ip", "--disable-epsv"] + tlsArgs + extra + [url]
+            return try transport.run(arguments: args, secretConfig: credentials, onProgress: nil)
+        }
+
+        var result = try listAttempt(extra: [])
+        if result.exitCode != 0 {
+            result = try listAttempt(extra: ["--ftp-port", "-"])
+        }
         guard result.exitCode == 0 else {
             throw MCBUploadError.transportFailed(exitCode: result.exitCode, message: result.stderr)
         }

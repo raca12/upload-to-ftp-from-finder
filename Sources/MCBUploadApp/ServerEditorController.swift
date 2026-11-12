@@ -322,7 +322,8 @@ final class ServerEditorController: NSWindowController {
         hostField.stringValue = server.host
         portField.stringValue = "\(server.port)"
         userField.stringValue = server.username
-        passwordField.stringValue = server.password
+        let resolvedPassword = server.password.isEmpty ? profileStore.password(for: server) : server.password
+        passwordField.stringValue = resolvedPassword
         remotePathField.stringValue = server.remotePath
         publicURLField.stringValue = server.publicBaseURL ?? ""
         autoSortCheck.state = server.autoSort.enabled ? .on : .off
@@ -436,19 +437,8 @@ final class ServerEditorController: NSWindowController {
 
     @objc private func deleteTapped() {
         guard let profile = original else { return }
-        // Önce form kapanır, sonra onay sorulur (sheet içinde modal alert açmak sorun çıkarır)
+        onDelete?(profile)
         closeSheet()
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            let alert = NSAlert()
-            alert.messageText = t("“%@” silinsin mi?", profile.name)
-            alert.informativeText = "Sunucu listeden kaldırılacak. Yüklenmiş dosyalara dokunulmaz."
-            alert.addButton(withTitle: t("Sil"))
-            alert.addButton(withTitle: t("Vazgeç"))
-            alert.alertStyle = .warning
-            guard alert.runModal() == .alertFirstButtonReturn else { return }
-            self.onDelete?(profile)
-        }
     }
 
     @objc private func cancelTapped() {
@@ -459,9 +449,9 @@ final class ServerEditorController: NSWindowController {
         guard let window else { return }
         if let parent = window.sheetParent {
             parent.endSheet(window)
-        } else {
-            window.close()
         }
+        window.orderOut(nil)
+        window.close()
     }
 
     // MARK: - Doğrulama
@@ -489,7 +479,14 @@ final class ServerEditorController: NSWindowController {
         profile.host = host
         profile.port = port
         profile.username = userField.stringValue.trimmingCharacters(in: .whitespaces)
-        profile.password = passwordField.stringValue
+        let enteredPassword = passwordField.stringValue
+        if !enteredPassword.isEmpty {
+            profile.password = enteredPassword
+        } else if let orig = original {
+            profile.password = orig.password.isEmpty ? profileStore.password(for: orig) : orig.password
+        } else {
+            profile.password = ""
+        }
 
         var remotePath = remotePathField.stringValue.trimmingCharacters(in: .whitespaces)
         if remotePath.isEmpty { remotePath = "/" }

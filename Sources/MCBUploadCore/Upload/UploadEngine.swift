@@ -157,18 +157,23 @@ public struct UploadEngine {
         case .ftp, .ftps, .ftpsi:
             let url = PathTools.transferURL(profile: profile, remoteFilePath: remotePath)
             let secret = curlCredentials(profile)
+            let tlsArgs: [String] = {
+                switch profile.proto {
+                case .ftps, .ftpsi: return ["-k", "--ssl-reqd"]
+                default: return ["-k", "--ssl"]
+                }
+            }()
 
             func attempt(extra: [String]) throws -> TransportResult {
-                var args = baseArgs() + extra
-                if profile.proto == .ftps { args.append("--ssl-reqd") }
-                args.append(contentsOf: ["--ftp-skip-pasv-ip", "--ftp-create-dirs", "-T", file.path, url])
+                var args = baseArgs() + tlsArgs + extra
+                args.append(contentsOf: ["--ftp-skip-pasv-ip", "--disable-epsv", "--ftp-create-dirs", "-T", file.path, url])
                 return try transport.run(arguments: args, secretConfig: secret, onProgress: progress)
             }
 
             var result = try attempt(extra: [])
-            // 28 = zaman aşımı: EPSV'yi kapatıp bir kez daha dene (firewall/NAT uyumu)
-            if result.exitCode == 28 || result.exitCode == 56 {
-                result = try attempt(extra: ["--disable-epsv"])
+            // 28/7/56 = veri kanalı zaman aşımı/reddi: Active FTP (--ftp-port -) ile yeniden dene
+            if result.exitCode == 28 || result.exitCode == 7 || result.exitCode == 56 {
+                result = try attempt(extra: ["--ftp-port", "-"])
             }
             try ensureSuccess(result)
             return ("", result.stdout)
@@ -205,7 +210,7 @@ public struct UploadEngine {
 
     private func baseArgs() -> [String] {
         ["--progress-bar", "--show-error", "--fail-with-body",
-         "--max-time", "900", "--connect-timeout", "20", "--retry", "1"]
+         "--max-time", "120", "--connect-timeout", "10"]
     }
 
     private func curlCredentials(_ profile: ServerProfile) -> String {

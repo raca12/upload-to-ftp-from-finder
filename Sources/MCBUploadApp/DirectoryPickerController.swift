@@ -117,6 +117,15 @@ final class DirectoryPickerController: NSWindowController, NSTableViewDataSource
         window?.defaultButtonCell = pickButton.cell as? NSButtonCell
     }
 
+    private func closeSheet() {
+        guard let window else { return }
+        if let parent = window.sheetParent {
+            parent.endSheet(window)
+        }
+        window.orderOut(nil)
+        window.close()
+    }
+
     // MARK: - Veri
 
     private func load() {
@@ -193,15 +202,6 @@ final class DirectoryPickerController: NSWindowController, NSTableViewDataSource
 
     @objc private func cancelTapped() {
         closeSheet()
-    }
-
-    private func closeSheet() {
-        guard let window else { return }
-        if let parent = window.sheetParent {
-            parent.endSheet(window)
-        } else {
-            window.close()
-        }
     }
 
     // MARK: - TableView

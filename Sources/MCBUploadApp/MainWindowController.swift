@@ -249,7 +249,7 @@ final class MainWindowController: NSWindowController, NSTableViewDataSource, NST
     // MARK: - Veri
 
     func reloadProfiles(selectID: UUID? = nil) {
-        profiles = (try? store.load(resolvePasswords: false)) ?? []
+        profiles = (try? store.load(resolvePasswords: true)) ?? []
         serverPopup.removeAllItems()
         if profiles.isEmpty {
             serverPopup.addItem(withTitle: t("Sunucu yok — “＋” ile FTP ekle"))
@@ -297,7 +297,20 @@ final class MainWindowController: NSWindowController, NSTableViewDataSource, NST
     func presentServerEditor(_ server: ServerProfile?) {
         guard AppLock.shared.require(.action) else { return }
         guard let parent = window else { return }
-        let editor = ServerEditorController(server: server)
+        // Zaten açık bir sheet varsa önce onu kapat (controller ezilip butonlar tepkisiz kalmasın)
+        if let existingSheet = parent.attachedSheet {
+            parent.endSheet(existingSheet)
+            existingSheet.orderOut(nil)
+        }
+        activeEditor = nil
+
+        var resolvedServer = server
+        if var s = resolvedServer, s.password.isEmpty {
+            s.password = store.password(for: s)
+            resolvedServer = s
+        }
+
+        let editor = ServerEditorController(server: resolvedServer)
         activeEditor = editor
         editor.onSave = { [weak self] profile in
             guard let self else { return }
@@ -305,7 +318,6 @@ final class MainWindowController: NSWindowController, NSTableViewDataSource, NST
                 try self.store.upsert(profile)
                 self.reloadProfiles(selectID: profile.id)
                 self.statusLabel?.stringValue = t("Sunucu kaydedildi: %@", profile.name)
-                self.activeEditor = nil
                 NotificationCenter.default.post(name: .mcbServersChanged, object: nil)
             } catch {
                 self.statusLabel?.stringValue = "Kaydedilemedi: \(error.localizedDescription)"
@@ -316,11 +328,12 @@ final class MainWindowController: NSWindowController, NSTableViewDataSource, NST
             try? self.store.delete(id: profile.id)
             self.reloadProfiles()
             self.statusLabel?.stringValue = t("Sunucu silindi: %@", profile.name)
-            self.activeEditor = nil
             NotificationCenter.default.post(name: .mcbServersChanged, object: nil)
         }
         if let sheet = editor.window {
-            parent.beginSheet(sheet, completionHandler: nil)
+            parent.beginSheet(sheet) { [weak self] _ in
+                self?.activeEditor = nil
+            }
         }
     }
 
@@ -539,13 +552,20 @@ final class MainWindowController: NSWindowController, NSTableViewDataSource, NST
 
     @objc private func browseTapped() {
         guard AppLock.shared.require(.action) else { return }
-        guard let profile = selectedProfile, let parent = window else { return }
+        guard var profile = selectedProfile, let parent = window else { return }
+        if profile.password.isEmpty {
+            profile.password = store.password(for: profile)
+        }
         guard profile.proto != .http else {
             let alert = NSAlert()
             alert.messageText = t("Klasör seçimi yalnızca FTP'de")
             alert.informativeText = t("HTTP yüklemelerinde hedef klasörü sunucu tarafındaki betik belirler.")
             alert.runModal()
             return
+        }
+        if let existingSheet = parent.attachedSheet {
+            parent.endSheet(existingSheet)
+            existingSheet.orderOut(nil)
         }
         let picker = DirectoryPickerController(profile: profile,
                                                startPath: folderField.stringValue.isEmpty ? profile.remotePath : folderField.stringValue)

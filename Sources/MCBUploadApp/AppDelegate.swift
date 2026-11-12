@@ -57,14 +57,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("--show-window") {
             showWindow()
         }
-        // İlk açılış: Finder eklentisi etkin değilse kurulum penceresini göster
-        if !UserDefaults.standard.bool(forKey: OnboardingWindowController.didOnboardKey),
-           CommandLine.arguments.contains("--show-window") || CommandLine.arguments.contains("--onboarding") {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
-                self?.openOnboarding()
-            }
-        }
-
         if CommandLine.arguments.contains("--onboarding") {
             openOnboarding()
         }

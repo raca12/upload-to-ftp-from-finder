@@ -54,15 +54,17 @@ public final class ProfileStore {
 
     public var fileURL: URL { baseDirectory.appendingPathComponent("servers.json") }
 
-    public init(baseDirectory: URL? = nil, credentials: CredentialStore = CredentialStore()) {
-        self.credentials = credentials
+    public init(baseDirectory: URL? = nil, credentials: CredentialStore? = nil) {
+        let resolvedDir: URL
         if let baseDirectory {
-            self.baseDirectory = baseDirectory
+            resolvedDir = baseDirectory
         } else if let custom = ProcessInfo.processInfo.environment["MCB_HOME"], !custom.isEmpty {
-            self.baseDirectory = URL(fileURLWithPath: (custom as NSString).expandingTildeInPath, isDirectory: true)
+            resolvedDir = URL(fileURLWithPath: (custom as NSString).expandingTildeInPath, isDirectory: true)
         } else {
-            self.baseDirectory = MCBUploadPaths.sharedBaseDirectory
+            resolvedDir = MCBUploadPaths.sharedBaseDirectory
         }
+        self.baseDirectory = resolvedDir
+        self.credentials = credentials ?? CredentialStore(baseDirectory: resolvedDir)
     }
 
     // MARK: - Okuma / yazma
@@ -138,6 +140,7 @@ public final class ProfileStore {
     public func delete(id: UUID) throws {
         var servers = try load()
         servers.removeAll { $0.id == id }
+        credentials.deletePassword(for: id.uuidString)
         try save(servers)
     }
 
